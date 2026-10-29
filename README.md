@@ -118,6 +118,18 @@ npm run lint
 npm run build
 ```
 
+## Deep Pool & Aqua interface
+
+The dashboard now uses a full-width sticky topbar in place of the sidebar. Athlete/session selectors stay in a unified context pill; **Actions** contains CSV export, JSON backup, restore and printing. Existing storage schema, migration, app state handlers and analysis calculations are unchanged.
+
+Four KPI cards show best observed 15 m time (with best–worst difference), breakout, kicks at that test, and session observation count. The pool SVG positions the breakout at its measured distance on the 0–15 m scale, with a red regulatory boundary. **The path is an illustration, not measured underwater motion.** It makes no depth, trajectory or biomechanical prediction.
+
+On desktop the chart occupies two thirds of the main analysis row and a quick-entry form occupies the remaining third. Breakout steppers use 0.5 m increments, kick steppers use increments of one, and both retain manual input and existing validation. Inline saving uses the same handler as the modal; it clears the form after a successful submission. The repeat-last-test modal is preserved. Notes collapse in inline mode.
+
+The chart offers **Time** and **Average speed**. Average speed is a display conversion, `15 / total 15 m time`, in m/s; it is **not underwater-only speed**. Time analysis and fastest-test selection remain unchanged. The cyan guide joins the fastest recorded test at each exact distance with straight segments; it is not a regression, interpolation model or prediction. Each individual observation, including repeats, remains plotted and selectable. Gold/cyan concentric rings identify the fastest observed test(s).
+
+The new theme includes responsive tablet/mobile layouts, larger stepper buttons, reduced-motion support, mobile test cards, blurred native dialogs, keyboard-operable Actions and preserved black-on-white print rules. Interface labels remain in English to match the existing workflows.
+
 Browser verification:
 
 ```sh
@@ -137,7 +149,7 @@ Playwright starts/reuses Vite on port 5173. Tests cover desktop/mobile CRUD, com
 
 _Screenshot placeholder for published documentation._
 
-Current browser tests generate `test-results/dashboard-v02-desktop.png` and `test-results/dashboard-v02-mobile.png` for review.
+Current browser tests generate `test-results/dashboard-aqua-desktop.png` and `test-results/dashboard-aqua-mobile.png` for review.
 
 ## Roadmap and remaining limits
 
@@ -149,4 +161,4 @@ Current browser tests generate `test-results/dashboard-v02-desktop.png` and `tes
 | V0.4           | Video-based underwater analysis                                                       |
 | V0.5           | Advanced performance recommendations                                                  |
 
-No automatic timing capture, live multi-tab sync, cloud sharing, cross-session trend analysis, account system or race simulator is included. Statistics describe entered observations and do not correct for fatigue or timing uncertainty. There is no confidence score or validated physiological model.
+The redesign adds no new backend or data schema. No automatic timing capture, live multi-tab sync, cloud sharing, cross-session trend analysis, account system or race simulator is included. Statistics describe entered observations and do not correct for fatigue or timing uncertainty. There is no confidence score or validated physiological model.

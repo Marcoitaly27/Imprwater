@@ -52,6 +52,11 @@ async function addTest(
     await d.getByRole("textbox", { name: "Notes", exact: true }).fill(notes);
   await d.getByRole("button", { name: "Add test", exact: true }).click();
 }
+async function utilityAction(page: Page, name: string) {
+  const menu = page.locator(".workspace-menu");
+  await menu.locator("summary").click();
+  await menu.getByRole("button", { name, exact: true }).click();
+}
 async function saved(page: Page) {
   return page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), KEY);
 }
@@ -120,7 +125,7 @@ test("athletes/sessions, comma input, quick repeats, independent averages, edit/
   if (await dismiss.isVisible()) await dismiss.click();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: `test-results/dashboard-v02-${testInfo.project.name}.png`,
+    path: `test-results/dashboard-aqua-${testInfo.project.name}.png`,
     fullPage: true,
   });
   await page
@@ -139,7 +144,7 @@ test("athletes/sessions, comma input, quick repeats, independent averages, edit/
   await page.getByRole("button", { name: "Confirm removal" }).click();
   expect((await saved(page)).tests).toHaveLength(2);
   await createSession(page, "Block starts", "Block start", "50");
-  await expect(page.locator(".v2-best")).toContainText("—");
+  await expect(page.locator(".v2-best")).toContainText("No observations yet");
   await addTest(page, "8", "4", "5.9");
   expect((await saved(page)).tests).toHaveLength(3);
   await createAthlete(page, "Other swimmer");
@@ -158,6 +163,7 @@ test("athletes/sessions, comma input, quick repeats, independent averages, edit/
   await page.getByRole("button", { name: "Save athlete" }).click();
   await page
     .getByRole("button", { name: "Load demo data", exact: true })
+    .first()
     .click();
   expect((await saved(page)).tests).toHaveLength(7);
   await expect(page.locator(".demo-tag")).toBeVisible();
@@ -259,10 +265,11 @@ test("CSV and JSON downloads, invalid import, restore preview, cancel and confir
   await page.goto("/");
   await page
     .getByRole("button", { name: "Load demo data", exact: true })
+    .first()
     .click();
   const before = await saved(page);
   let downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export CSV", exact: true }).click();
+  await utilityAction(page, "Export CSV");
   const csv = await downloadPromise;
   expect(csv.suggestedFilename()).toBe("underwater-session.csv");
   const fs = await import("node:fs/promises");
@@ -270,7 +277,7 @@ test("CSV and JSON downloads, invalid import, restore preview, cancel and confir
   expect(text).toContain("Breakout (m)");
   expect(text).toContain("6.31");
   downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Backup JSON", exact: true }).click();
+  await utilityAction(page, "Backup JSON");
   const backup = await downloadPromise;
   const raw = await fs.readFile((await backup.path())!, "utf8");
   expect(JSON.parse(raw)).toEqual(before);
@@ -316,6 +323,7 @@ test("overlapping points are individually selectable by keyboard and printed sum
   await page.goto("/");
   await page
     .getByRole("button", { name: "Load demo data", exact: true })
+    .first()
     .click();
   await addTest(page, "12", "7", "6.31", "Repeated exact point");
   const chart = page.getByRole("combobox", { name: "Chart observation" });
@@ -361,6 +369,7 @@ test("corrupt storage is protected and failed writes keep the app usable", async
   );
   await page
     .getByRole("button", { name: "Load demo data", exact: true })
+    .first()
     .click();
   expect(
     await page.evaluate(() => localStorage.getItem("underwater-optimizer:v2")),
@@ -386,6 +395,7 @@ test("invalid values rejected, imported conditions require confirmation when obs
   await page.goto("/");
   await page
     .getByRole("button", { name: "Load demo data", exact: true })
+    .first()
     .click();
   await page
     .locator(".record-toolbar")
@@ -422,4 +432,132 @@ test("invalid values rejected, imported conditions require confirmation when obs
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("aqua layout, inline steppers, speed view and responsive pool geometry preserve session data", async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (msg) => {
+    if (msg.type() === "error" || msg.type() === "warning")
+      errors.push(msg.text());
+  });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Load demo data", exact: true })
+    .first()
+    .click();
+  await expect(page.locator(".sidebar")).toHaveCount(0);
+  await expect(page.locator(".topbar .brand")).toContainText(
+    "UNDERWATER ADVANTAGE",
+  );
+  const form = page.getByRole("form", { name: "Quick test entry" });
+  await form
+    .getByRole("textbox", { name: "Breakout distance", exact: true })
+    .fill("15");
+  await form
+    .getByRole("button", { name: "Increase breakout distance" })
+    .click();
+  await expect(
+    form.getByRole("textbox", { name: "Breakout distance", exact: true }),
+  ).toHaveValue("15");
+  await form
+    .getByRole("textbox", { name: "Breakout distance", exact: true })
+    .fill("1");
+  await form
+    .getByRole("button", { name: "Decrease breakout distance" })
+    .click();
+  await expect(
+    form.getByRole("textbox", { name: "Breakout distance", exact: true }),
+  ).toHaveValue("1");
+  await form
+    .getByRole("textbox", { name: "Breakout distance", exact: true })
+    .fill("10");
+  await form
+    .getByRole("button", { name: "Increase breakout distance" })
+    .click();
+  await expect(
+    form.getByRole("textbox", { name: "Breakout distance", exact: true }),
+  ).toHaveValue("10.5");
+  await form
+    .getByRole("textbox", { name: "Dolphin kicks", exact: true })
+    .fill("5");
+  await form.getByRole("button", { name: "Increase dolphin kicks" }).click();
+  await expect(
+    form.getByRole("textbox", { name: "Dolphin kicks", exact: true }),
+  ).toHaveValue("6");
+  await form.getByRole("button", { name: "Decrease dolphin kicks" }).click();
+  await form
+    .getByRole("textbox", { name: "15 m time", exact: true })
+    .fill("6,30");
+  await form.locator(".notes-disclosure summary").click();
+  await form
+    .getByRole("textbox", { name: "Notes", exact: true })
+    .fill("Poolside inline test");
+  await form.getByRole("button", { name: "Add test", exact: true }).click();
+  await expect(page.locator(".v2-best")).toContainText(
+    "10.5 m · 5 kicks · 6.30 s",
+  );
+  await expect(
+    form.getByRole("textbox", { name: "15 m time", exact: true }),
+  ).toHaveValue("");
+  const before = await saved(page);
+  expect(before.tests).toHaveLength(5);
+  await page.getByRole("button", { name: /Average speed/ }).click();
+  await expect(page.locator(".axis-notice")).toContainText(
+    "15 m ÷ total 15 m time",
+  );
+  await expect(page.locator(".chart-selection p").first()).toContainText(
+    "2.38 m/s",
+  );
+  expect(await saved(page)).toEqual(before);
+  await page.getByRole("button", { name: "Detail", exact: true }).click();
+  await expect(page.locator(".axis-notice")).toContainText(
+    "Does not start at zero",
+  );
+  await page.getByRole("button", { name: "Time s", exact: true }).click();
+  await page.locator(".workspace-menu summary").click();
+  await expect(
+    page.getByRole("button", { name: "Export CSV", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "Export CSV", exact: true }),
+  ).toBeHidden();
+  const sizes =
+    testInfo.project.name === "desktop"
+      ? [
+          { width: 768, height: 1024 },
+          { width: 1024, height: 768 },
+          { width: 1280, height: 900 },
+        ]
+      : [{ width: 320, height: 740 }];
+  for (const viewport of sizes) {
+    await page.setViewportSize(viewport);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    const lane = await page.locator(".pool-track").boundingBox();
+    const marker = await page.locator(".marker-dot").boundingBox();
+    expect(lane).not.toBeNull();
+    expect(marker).not.toBeNull();
+    expect((marker!.x + marker!.width / 2 - lane!.x) / lane!.width).toBeCloseTo(
+      10.5 / 15,
+      1,
+    );
+    await expect(page.locator(".topbar .select-actions").first()).toBeVisible();
+    const toastDismiss = page.getByRole("button", {
+      name: "Dismiss notification",
+    });
+    if (await toastDismiss.isVisible()) await toastDismiss.click();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({
+      path: `test-results/aqua-${viewport.width}x${viewport.height}.png`,
+      fullPage: true,
+    });
+  }
+  expect(errors).toEqual([]);
 });

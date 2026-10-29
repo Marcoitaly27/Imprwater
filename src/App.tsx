@@ -16,6 +16,10 @@ import {
   Users,
   Waves,
   X,
+  ChevronRight,
+  Timer,
+  Target,
+  Zap,
 } from "lucide-react";
 import type { AppData, Athlete, Session, Trial, TrialInput } from "./lib/model";
 import {
@@ -33,6 +37,7 @@ import { TestForm } from "./components/TestForm";
 import { PoolLane } from "./components/PoolLane";
 import { TrialLog } from "./components/TrialLog";
 import { Statistics } from "./components/Statistics";
+import { WorkspaceMenu } from "./components/WorkspaceMenu";
 const PerformanceChart = lazy(() =>
   import("./components/PerformanceChart").then((m) => ({
     default: m.PerformanceChart,
@@ -167,6 +172,7 @@ export default function App() {
           },
         })
       }
+      onDemo={demo}
       onClear={() =>
         setConfirmation({
           title: "Clear session tests?",
@@ -185,142 +191,35 @@ export default function App() {
   return (
     <>
       <div className="app-shell no-print">
-        <aside className="sidebar">
-          <a
-            href="#"
-            className="brand"
-            onClick={(e) => {
-              e.preventDefault();
-              setTab("Dashboard");
-            }}
-          >
-            <span className="brand-mark">
-              <Waves size={26} />
-            </span>
-            <span>
-              UNDERWATER<small>OPTIMIZER</small>
-            </span>
-          </a>
-          <div className="workspace-label">
-            PERFORMANCE LAB <span>V0.2</span>
-          </div>
-          <nav aria-label="Main navigation">
-            {[
-              { name: "Dashboard", icon: LayoutDashboard },
-              { name: "Tests", icon: FlaskConical },
-              { name: "Simulator", icon: Activity },
-            ].map(({ name, icon: Icon }) => (
-              <button
-                key={name}
-                className={`nav-item ${tab === name ? "active" : ""}`}
-                onClick={() => setTab(name)}
-              >
-                <Icon size={19} />
-                <span>{name}</span>
-                {name === "Simulator" && <small>SOON</small>}
-              </button>
-            ))}
-          </nav>
-          <div className="sidebar-note">
-            <Waves size={22} />
-            <h3>
-              Better observations.
-              <br />
-              Clearer decisions.
-            </h3>
-            <p>Same athlete. Same conditions. One session at a time.</p>
-          </div>
-          <div className="sidebar-bottom">
-            <button onClick={() => setModal({ type: "help" })}>
-              <CircleHelp size={18} />
-              How it works
-            </button>
-            <div className="local-status">
-              <span className={`status-dot ${storageError ? "warning" : ""}`} />
-              {storageError ? "In-memory changes" : "Stored in this browser"}
-            </div>
-          </div>
-        </aside>
         <div className="main-shell">
           <header className="topbar">
-            <div className="breadcrumb">
-              Performance lab / <strong>{tab}</strong>
-            </div>
-            <button
-              className="text-button"
-              onClick={() => setModal({ type: "help" })}
+            <a
+              href="#"
+              className="brand"
+              onClick={(e) => {
+                e.preventDefault();
+                setTab("Dashboard");
+              }}
             >
-              <CircleHelp size={17} />
-              Local workspace · V0.2
-            </button>
-          </header>
-          <main>
-            <div className="page-heading">
-              <div>
-                <div className="eyebrow">
-                  <span />
-                  THE UNDERWATER ADVANTAGE
-                </div>
-                <h1>
-                  {tab === "Simulator"
-                    ? "Your next race, reimagined."
-                    : tab === "Tests"
-                      ? "Every test tells a story."
-                      : "Find your fastest breakout."}
-                </h1>
-                <p>
-                  Measured observations. Transparent comparisons. No hidden
-                  model.
-                </p>
-              </div>
-              <button className="button secondary" onClick={demo}>
-                <Database size={17} />
-                Load demo data
-              </button>
-            </div>
-            {storageError && (
-              <div className="storage-banner" role="alert">
-                <span>{storageError}</span>
-                <button
-                  className="button secondary"
-                  onClick={() => {
-                    const error = saveData(data);
-                    setStorageError(error);
-                    if (!error) setSavingEnabled(true);
-                  }}
-                >
-                  {savingEnabled ? "Retry saving" : "Enable saving"}
-                </button>
-                <button
-                  className="button secondary"
-                  onClick={() =>
-                    download(
-                      JSON.stringify(data, null, 2),
-                      "underwater-backup.json",
-                      "application/json",
-                    )
-                  }
-                >
-                  Download backup
-                </button>
-              </div>
-            )}
-            {importError && (
-              <div className="storage-banner" role="alert">
-                {importError}
-                <button
-                  className="icon-button"
-                  aria-label="Dismiss import error"
-                  onClick={() => setImportError("")}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            )}
-            <section
-              className="panel context-panel"
-              aria-label="Athlete and session"
-            >
+              <span className="brand-mark">
+                <Waves size={27} />
+              </span>
+              <span>
+                UNDERWATER ADVANTAGE<small>Find your fastest breakout</small>
+              </span>
+            </a>
+            <section className="context-pill" aria-label="Athlete and session">
+              <span className="context-avatar" aria-hidden="true">
+                {athlete
+                  ? athlete.name
+                      .trim()
+                      .split(/\s+/)
+                      .slice(0, 2)
+                      .map((n) => n[0])
+                      .join("")
+                      .toUpperCase()
+                  : "SW"}
+              </span>
               <div className="context-selectors">
                 <div>
                   <label htmlFor="athlete">Athlete</label>
@@ -400,39 +299,139 @@ export default function App() {
                 </div>
               </div>
               {session && (
-                <div className="session-metadata">
-                  <span>{session.date ?? "Date unknown"}</span>
-                  <span>
-                    {session.stroke} · {session.event} m
-                  </span>
-                  <span>
-                    {session.pool ? `${session.pool} m pool` : "Pool unknown"}
-                  </span>
-                  <span>{session.startType ?? "Start type unknown"}</span>
+                <small className="header-session-conditions">
+                  {session.pool ? `${session.pool} m` : "Pool ?"} ·{" "}
+                  {session.startType ?? "Start ?"} · {session.stroke}
                   {athlete?.isDemo && (
-                    <strong className="demo-tag">
-                      DEMO · not your real data
-                    </strong>
+                    <strong className="demo-tag"> · DEMO</strong>
                   )}
-                </div>
+                </small>
               )}
             </section>
-            <div className="workspace-toolbar">
-              <div className="toolbar-actions">
+            <div className="topbar-actions">
+              <button className="button demo-button" onClick={demo}>
+                <Database size={15} />
+                <span>Load demo data</span>
+              </button>
+              <WorkspaceMenu>
+                {" "}
+                <div className="workspace-utilities">
+                  <div className="toolbar-actions">
+                    <button
+                      className="button secondary"
+                      disabled={!tests.length}
+                      onClick={() =>
+                        session &&
+                        download(
+                          csvForSession(data, session),
+                          "underwater-session.csv",
+                          "text/csv;charset=utf-8",
+                        )
+                      }
+                    >
+                      <Download size={16} />
+                      Export CSV
+                    </button>
+                    <button
+                      className="button secondary"
+                      onClick={() =>
+                        download(
+                          JSON.stringify(data, null, 2),
+                          "underwater-backup.json",
+                          "application/json",
+                        )
+                      }
+                    >
+                      <Download size={16} />
+                      Backup JSON
+                    </button>
+                    <button
+                      className="button secondary"
+                      onClick={() => fileRef.current?.click()}
+                    >
+                      <Upload size={16} />
+                      Restore backup
+                    </button>
+                    <button
+                      className="button secondary"
+                      disabled={!session}
+                      onClick={() => window.print()}
+                    >
+                      <Printer size={16} />
+                      Print summary
+                    </button>
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept=".json,application/json"
+                      aria-label="Backup file"
+                      ref={fileRef}
+                      onChange={(e) => {
+                        void readBackup(e.target.files?.[0]);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
+                  <p>Local to this browser · no device sync</p>
+                </div>
+                <button
+                  className="menu-help"
+                  onClick={() => setModal({ type: "help" })}
+                >
+                  <CircleHelp size={16} />
+                  About the analysis
+                </button>
+              </WorkspaceMenu>
+            </div>
+          </header>
+          <main>
+            <div className="page-heading">
+              <div>
+                <div className="eyebrow">
+                  <span />
+                  PERFORMANCE LAB <ChevronRight size={12} /> UNDERWATER ANALYSIS
+                </div>
+                <h1>
+                  {tab === "Simulator"
+                    ? "Your next race, reimagined."
+                    : tab === "Tests"
+                      ? "Every test tells a story."
+                      : "Make every meter count."}
+                </h1>
+                <p>
+                  Your data. A clearer breakout. Built for the edge of the pool.
+                </p>
+              </div>
+              <nav aria-label="Main navigation">
+                {[
+                  { name: "Dashboard", icon: LayoutDashboard },
+                  { name: "Tests", icon: FlaskConical },
+                  { name: "Simulator", icon: Activity },
+                ].map(({ name, icon: Icon }) => (
+                  <button
+                    key={name}
+                    className={`nav-item ${tab === name ? "active" : ""}`}
+                    onClick={() => setTab(name)}
+                  >
+                    <Icon size={16} />
+                    <span>{name}</span>
+                    {name === "Simulator" && <small>SOON</small>}
+                  </button>
+                ))}
+              </nav>
+            </div>
+            {storageError && (
+              <div className="storage-banner" role="alert">
+                <span>{storageError}</span>
                 <button
                   className="button secondary"
-                  disabled={!tests.length}
-                  onClick={() =>
-                    session &&
-                    download(
-                      csvForSession(data, session),
-                      "underwater-session.csv",
-                      "text/csv;charset=utf-8",
-                    )
-                  }
+                  onClick={() => {
+                    const error = saveData(data);
+                    setStorageError(error);
+                    if (!error) setSavingEnabled(true);
+                  }}
                 >
-                  <Download size={16} />
-                  Export CSV
+                  {savingEnabled ? "Retry saving" : "Enable saving"}
                 </button>
                 <button
                   className="button secondary"
@@ -444,38 +443,22 @@ export default function App() {
                     )
                   }
                 >
-                  <Download size={16} />
-                  Backup JSON
+                  Download backup
                 </button>
-                <button
-                  className="button secondary"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Upload size={16} />
-                  Restore backup
-                </button>
-                <button
-                  className="button secondary"
-                  disabled={!session}
-                  onClick={() => window.print()}
-                >
-                  <Printer size={16} />
-                  Print summary
-                </button>
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept=".json,application/json"
-                  aria-label="Backup file"
-                  ref={fileRef}
-                  onChange={(e) => {
-                    void readBackup(e.target.files?.[0]);
-                    e.target.value = "";
-                  }}
-                />
               </div>
-              <p>Local to this browser · no device sync</p>
-            </div>
+            )}
+            {importError && (
+              <div className="storage-banner" role="alert">
+                {importError}
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss import error"
+                  onClick={() => setImportError("")}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            )}
             {!athlete ? (
               <section className="panel welcome-panel">
                 <Users size={36} />
@@ -555,7 +538,10 @@ export default function App() {
                       <div>
                         <h2>{session.name}</h2>
                         <p>
-                          {athlete.name} · comparisons use this session only
+                          {athlete.name} · {session.date ?? "Date unknown"} ·{" "}
+                          {session.stroke}, {session.event} m ·{" "}
+                          {session.pool ?? "?"} m pool ·{" "}
+                          {session.startType ?? "Start unknown"}
                         </p>
                       </div>
                       <div>
@@ -582,56 +568,92 @@ export default function App() {
                     {ready && (
                       <div className="stats-grid">
                         <Stat
-                          title="TESTS RECORDED"
-                          value={String(tests.length)}
-                          unit="tests"
-                          note="One athlete. One session."
-                        />
-                        <Stat
-                          title="BEST OBSERVED TIME"
+                          title="BEST 15 M TIME"
                           value={best ? best.time.toFixed(2) : "—"}
                           unit="s"
+                          icon={<Timer size={19} />}
                           note={
-                            best
-                              ? `${tied.length} fastest observation${tied.length > 1 ? "s" : ""}`
-                              : "Add your first observation"
+                            tests.length > 1
+                              ? `Best–worst difference: ${spread.toFixed(2)} s`
+                              : "Record a test to set your benchmark"
                           }
+                          badge={tests.length > 1}
                         />
                         <Stat
                           title="BEST OBSERVED BREAKOUT"
                           value={best ? String(best.distance) : "—"}
                           unit="m"
+                          icon={<Target size={19} />}
+                          note="Distance at your fastest observed time"
+                        />
+                        <Stat
+                          title="KICKS AT BEST TEST"
+                          value={best ? String(best.kicks) : "—"}
+                          unit="kicks"
+                          icon={<Zap size={19} />}
                           note={
-                            best
-                              ? `${best.kicks} dolphin kicks · individual test`
-                              : "No prediction is made"
+                            tied.length > 1
+                              ? `${tied.length} fastest ties · shortest breakout shown`
+                              : "Recorded at the best individual test"
                           }
                         />
                         <Stat
-                          title="BEST–WORST DIFFERENCE"
-                          value={tests.length > 1 ? spread.toFixed(2) : "—"}
-                          unit="s"
-                          note="Spread within this session, not progress"
+                          title="SESSION OBSERVATIONS"
+                          value={String(tests.length).padStart(2, "0")}
+                          unit="tests"
+                          icon={<FlaskConical size={19} />}
+                          note="Same athlete. Same session. Real observations."
                         />
                       </div>
                     )}
                     {ready && tab === "Dashboard" && (
                       <>
+                        <PoolLane distance={best?.distance} time={best?.time} />
+                        <div className="best-observation-strip v2-best">
+                          <span className="observation-label">
+                            <Target size={16} />
+                            BEST OBSERVED TEST
+                          </span>
+                          <strong>
+                            {best
+                              ? `${best.distance} m · ${best.kicks} kicks · ${best.time.toFixed(2)} s`
+                              : "No observations yet"}
+                          </strong>
+                          <p>
+                            {tied.length > 1
+                              ? `${tied.length} fastest ties. The summary shows the shortest tied distance. `
+                              : ""}
+                            {analysis.preliminary
+                              ? "Preliminary result. Collect more comparable repeats. "
+                              : "Descriptive result. "}
+                            Not a guaranteed physiological optimum. Best–worst
+                            difference describes session spread, not training
+                            progress.
+                          </p>
+                        </div>
                         <div className="analysis-grid">
                           <section className="panel chart-panel">
                             <div className="panel-heading">
                               <div>
-                                <h2>Breakout performance</h2>
+                                <span className="section-kicker">
+                                  OBSERVE. COMPARE. REFINE.
+                                </span>
+                                <h2>Distance–time relationship</h2>
                                 <p>
-                                  Every recorded test. Lower time is faster.
+                                  Find the fastest result among your recorded
+                                  tests.
                                 </p>
                               </div>
+                              <span className="live-label">
+                                <span />
+                                SESSION DATA
+                              </span>
                             </div>
                             {tests.length ? (
                               <Suspense
                                 fallback={
                                   <div className="chart-empty">
-                                    Loading chart…
+                                    Loading performance chart…
                                   </div>
                                 }
                               >
@@ -643,54 +665,42 @@ export default function App() {
                               </Suspense>
                             ) : (
                               <div className="chart-empty">
-                                <h3>No observations yet.</h3>
+                                <Activity size={36} />
+                                <h3>Your performance, in perspective.</h3>
                                 <p>
-                                  Use New test to begin, or open the separate
-                                  demo workspace.
+                                  Record your first test using the form beside
+                                  this chart.
+                                </p>
+                                <button className="text-button" onClick={demo}>
+                                  Explore demo data <ArrowRight size={15} />
+                                </button>
+                              </div>
+                            )}
+                          </section>
+                          <section className="panel quick-entry">
+                            <div className="panel-heading">
+                              <div>
+                                <span className="section-kicker">
+                                  POOLSIDE READY
+                                </span>
+                                <h2>Quick test entry</h2>
+                                <p>
+                                  One more observation. One clearer picture.
                                 </p>
                               </div>
-                            )}
-                          </section>
-                          <section className="panel optimal-card v2-best">
-                            <div className="optimal-heading">
-                              BEST OBSERVED TEST
+                              <span className="entry-icon">
+                                <Plus size={19} />
+                              </span>
                             </div>
-                            <div className="best-observed-label">
-                              INDIVIDUAL OBSERVATION
-                            </div>
-                            <div className="optimal-distance">
-                              {best ? best.distance : "—"}
-                              <span>m</span>
-                            </div>
-                            <div className="optimal-details">
-                              <div>
-                                <span>Dolphin kicks</span>
-                                <strong>{best?.kicks ?? "—"}</strong>
-                              </div>
-                              <div>
-                                <span>15 m time</span>
-                                <strong>
-                                  {best ? `${best.time.toFixed(2)} s` : "—"}
-                                </strong>
-                              </div>
-                            </div>
-                            <p className="optimal-disclaimer">
-                              {tied.length > 1
-                                ? `${tied.length} fastest ties. The summary shows the shortest tied distance. `
-                                : ""}
-                              One best observation does not establish the most
-                              consistent strategy or a physiological optimum.
-                            </p>
-                            {best && (
-                              <p className="preliminary">
-                                {analysis.preliminary
-                                  ? "Preliminary result · collect more comparable repeats."
-                                  : "Descriptive result · no guarantee of reliability."}
-                              </p>
-                            )}
+                            <TestForm
+                              key={session.id}
+                              inline
+                              tests={tests}
+                              onSave={saveTrial}
+                              onCancel={() => {}}
+                            />
                           </section>
                         </div>
-                        <PoolLane distance={best?.distance} />
                       </>
                     )}
                     {ready && <Statistics tests={tests} />}
@@ -740,7 +750,7 @@ export default function App() {
             <footer className="page-footer">
               <span>
                 <Waves size={18} />
-                UNDERWATER OPTIMIZER · V0.2
+                UNDERWATER ADVANTAGE · V0.2
               </span>
               <p>Observed performance, not a validated biomechanical model.</p>
               <button onClick={() => setModal({ type: "help" })}>
@@ -1161,20 +1171,30 @@ function Stat({
   value,
   unit,
   note,
+  icon,
+  badge = false,
 }: {
   title: string;
   value: string;
   unit: string;
   note: string;
+  icon: import("react").ReactNode;
+  badge?: boolean;
 }) {
   return (
     <div className="stat-card">
-      <div className="stat-caption">{title}</div>
+      <div className="stat-caption">
+        <span>{title}</span>
+        <span className="stat-icon">{icon}</span>
+      </div>
       <div className="stat-value">
         {value}
         <span>{unit}</span>
       </div>
-      <p className="stat-sub">{note}</p>
+      <p className={`stat-sub ${badge ? "metric-delta" : ""}`}>
+        {badge && <span>↘</span>}
+        {note}
+      </p>
     </div>
   );
 }

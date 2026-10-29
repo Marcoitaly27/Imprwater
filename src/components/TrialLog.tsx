@@ -1,4 +1,11 @@
-import { Pencil, Trash2, ArrowRightLeft } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  ArrowRightLeft,
+  Waves,
+  ArrowUpRight,
+  Database,
+} from "lucide-react";
 import type { Trial } from "../lib/model";
 export function TrialLog({
   tests,
@@ -7,6 +14,7 @@ export function TrialLog({
   onDelete,
   onMove,
   onClear,
+  onDemo,
 }: {
   tests: Trial[];
   bestTime?: number;
@@ -14,13 +22,15 @@ export function TrialLog({
   onDelete: (t: Trial) => void;
   onMove: (t: Trial) => void;
   onClear: () => void;
+  onDemo: () => void;
 }) {
   return (
     <section className="panel table-panel">
       <div className="panel-heading">
         <div>
+          <span className="section-kicker">EVERY OBSERVATION COUNTS</span>
           <h2>
-            Test log <span className="count-badge">{tests.length}</span>
+            Session test log <span className="count-badge">{tests.length}</span>
           </h2>
           <p>Sorted by breakout distance. Each repeat stays separate.</p>
         </div>
@@ -35,8 +45,16 @@ export function TrialLog({
       </div>
       {!tests.length ? (
         <div className="table-empty">
+          <span className="empty-log-icon">
+            <Waves size={32} />
+          </span>
           <h3>No observations yet.</h3>
-          <p>Record your first test or explore the separate demo athlete.</p>
+          <p>Your next breakthrough starts with one observation.</p>
+          <button className="button secondary" onClick={onDemo}>
+            <Database size={16} />
+            Load demo data
+            <ArrowUpRight size={14} />
+          </button>
         </div>
       ) : (
         <>
@@ -63,7 +81,7 @@ export function TrialLog({
                       <span className="test-name">
                         Test {i + 1}
                         {t.time === bestTime && (
-                          <span className="best-badge">BEST</span>
+                          <span className="best-badge">★ BEST</span>
                         )}
                       </span>
                       <small className="test-ref">{t.id.slice(0, 8)}</small>
@@ -109,7 +127,7 @@ export function TrialLog({
                     Test {i + 1} <small>· {t.id.slice(0, 8)}</small>
                   </strong>
                   {t.time === bestTime && (
-                    <span className="best-badge">BEST OBSERVED</span>
+                    <span className="best-badge">★ BEST OBSERVED</span>
                   )}
                 </header>
                 <div className="mobile-test-values">
