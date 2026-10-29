@@ -162,3 +162,7 @@ Current browser tests generate `test-results/dashboard-aqua-desktop.png` and `te
 | V0.5           | Advanced performance recommendations                                                  |
 
 The redesign adds no new backend or data schema. No automatic timing capture, live multi-tab sync, cloud sharing, cross-session trend analysis, account system or race simulator is included. Statistics describe entered observations and do not correct for fatigue or timing uncertainty. There is no confidence score or validated physiological model.
+
+## Official logo
+
+The official app logo is the supplied transparent swimmer-and-arrow PNG at `public/brand/imprwater-logo.png`. `src/components/Logo.tsx` uses the same artwork for the header, footer and printed report; the browser favicon and touch icon also reference it. Preserve this artwork and its original colors for future branding changes. A light display plate provides contrast against the navy interface without altering the PNG.

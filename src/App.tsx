@@ -14,7 +14,6 @@ import {
   RotateCcw,
   Upload,
   Users,
-  Waves,
   X,
   ChevronRight,
   Timer,
@@ -38,6 +37,7 @@ import { PoolLane } from "./components/PoolLane";
 import { TrialLog } from "./components/TrialLog";
 import { Statistics } from "./components/Statistics";
 import { WorkspaceMenu } from "./components/WorkspaceMenu";
+import { Logo } from "./components/Logo";
 const PerformanceChart = lazy(() =>
   import("./components/PerformanceChart").then((m) => ({
     default: m.PerformanceChart,
@@ -201,9 +201,7 @@ export default function App() {
                 setTab("Dashboard");
               }}
             >
-              <span className="brand-mark">
-                <Waves size={27} />
-              </span>
+              <Logo className="brand-mark" />
               <span>
                 UNDERWATER ADVANTAGE<small>Find your fastest breakout</small>
               </span>
@@ -749,7 +747,7 @@ export default function App() {
             )}
             <footer className="page-footer">
               <span>
-                <Waves size={18} />
+                <Logo className="footer-logo" />
                 UNDERWATER ADVANTAGE · V0.2
               </span>
               <p>Observed performance, not a validated biomechanical model.</p>
@@ -1101,6 +1099,7 @@ export default function App() {
         )}
       </div>
       <section className="print-summary">
+        <Logo className="print-logo" />
         <h1>Underwater Optimizer · Session summary</h1>
         <h2>
           {athlete?.name} · {session?.name}
