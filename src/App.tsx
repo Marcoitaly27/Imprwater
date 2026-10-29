@@ -1,987 +1,1222 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Activity,
-  ArrowDownRight,
   ArrowRight,
-  ArrowUpRight,
   Check,
-  ChevronDown,
-  ChevronRight,
   CircleHelp,
   Database,
+  Download,
   FlaskConical,
-  Info,
   LayoutDashboard,
-  ListFilter,
   Pencil,
   Plus,
-  Radio,
-  Sparkles,
-  Target,
-  Timer,
-  Trash2,
-  TrendingDown,
-  Trophy,
+  Printer,
+  RotateCcw,
+  Upload,
+  Users,
   Waves,
   X,
-  Zap,
 } from "lucide-react";
-import type { AppData, Profile, Trial, TrialInput } from "./lib/model";
-import { analyze, events, makeDemo, profileKey, strokes } from "./lib/model";
-import { loadData, saveData } from "./lib/storage";
+import type { AppData, Athlete, Session, Trial, TrialInput } from "./lib/model";
+import {
+  addDemo,
+  analyze,
+  decimal,
+  sessionComplete,
+  sessionTests,
+} from "./lib/model";
+import { loadData, parseBackup, saveData } from "./lib/storage";
+import { csvForSession, download } from "./lib/export";
 import { Dialog } from "./components/Dialog";
+import { NameForm, SessionForm } from "./components/ContextForms";
 import { TestForm } from "./components/TestForm";
+import { PoolLane } from "./components/PoolLane";
+import { TrialLog } from "./components/TrialLog";
+import { Statistics } from "./components/Statistics";
 const PerformanceChart = lazy(() =>
-  import("./components/PerformanceChart").then((module) => ({
-    default: module.PerformanceChart,
+  import("./components/PerformanceChart").then((m) => ({
+    default: m.PerformanceChart,
   })),
 );
-
-type Confirmation = { type: "clear" | "demo" | "delete"; id?: string };
-function App() {
+type Modal =
+  | { type: "athlete"; athlete?: Athlete }
+  | { type: "session"; session?: Session }
+  | { type: "test"; test?: Trial; repeat?: Trial }
+  | { type: "move"; test: Trial }
+  | { type: "help" };
+type Confirm = { title: string; description: string; action: () => void };
+export default function App() {
   const [loaded] = useState(loadData);
   const [data, setData] = useState<AppData>(loaded.data);
   const [storageError, setStorageError] = useState(loaded.error);
   const [savingEnabled, setSavingEnabled] = useState(!loaded.error);
-  const [tab, setTab] = useState("Dashboard");
-  const [editing, setEditing] = useState<Trial | null>(null);
-  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
-  const [notice, setNotice] = useState("");
-  const [help, setHelp] = useState(false);
-  const formRef = useRef<HTMLElement>(null);
-  const profile = data.profile;
-  const tests = data.tests.filter(
-    (t) => t.stroke === profile.stroke && t.event === profile.event,
+  const [notice, setNotice] = useState(
+    loaded.migrated
+      ? "Previous data recovered. Complete imported session conditions before comparing tests."
+      : "",
   );
-  const { sorted, best, worst, improvement, tied, longer } = analyze(tests);
+  const [tab, setTab] = useState("Dashboard");
+  const [modal, setModal] = useState<Modal | null>(null);
+  const [confirmation, setConfirmation] = useState<Confirm | null>(null);
+  const [pendingBackup, setPendingBackup] = useState<AppData | null>(null);
+  const [importError, setImportError] = useState("");
+  const [moveTarget, setMoveTarget] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const athlete = data.athletes.find((a) => a.id === data.selectedAthleteId);
+  const sessions = data.sessions.filter((s) => s.athleteId === athlete?.id);
+  const session = sessions.find((s) => s.id === data.selectedSessionId);
+  const tests = sessionTests(data, session);
+  const analysis = analyze(tests);
+  const { sorted, best, spread, tied } = analysis;
+  const ready = !!session && sessionComplete(session);
+  const last = [...tests].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  )[0];
   useEffect(() => {
     if (savingEnabled) setStorageError(saveData(data));
   }, [data, savingEnabled]);
   useEffect(() => {
     if (!notice) return;
-    const timeout = setTimeout(() => setNotice(""), 5000);
-    return () => clearTimeout(timeout);
+    const t = setTimeout(() => setNotice(""), 6500);
+    return () => clearTimeout(t);
   }, [notice]);
-  function updateProfile(next: Partial<Profile>) {
-    setData((previous) => {
-      const changed = { ...previous.profile, ...next };
-      const key = profileKey(changed);
-      if ("stroke" in next || "event" in next)
-        changed.personalBest = previous.personalBests[key] ?? "";
-      return {
-        ...previous,
-        profile: changed,
-        personalBests: {
-          ...previous.personalBests,
-          [key]: changed.personalBest,
-        },
-      };
-    });
-  }
-  function addTest(input: TrialInput) {
-    setData((previous) => ({
-      ...previous,
-      tests: [
-        ...previous.tests,
-        {
-          ...input,
-          stroke: profile.stroke,
-          event: profile.event,
-          id: crypto.randomUUID(),
-          createdAt: new Date().toISOString(),
-        },
-      ],
+  function selectAthlete(id: string) {
+    setData((d) => ({
+      ...d,
+      selectedAthleteId: id,
+      selectedSessionId: d.sessions.find((s) => s.athleteId === id)?.id ?? null,
     }));
-    setNotice("Test added to your observations.");
   }
-  function loadDemo() {
-    setData((previous) => ({
-      ...previous,
-      tests: [
-        ...previous.tests.filter(
-          (t) => t.stroke !== profile.stroke || t.event !== profile.event,
-        ),
-        ...makeDemo(profile),
-      ],
-    }));
-    setNotice("Four demo tests loaded. Best observed breakout: 12.0 m.");
-  }
-  function confirmAction() {
-    if (confirmation?.type === "demo") loadDemo();
-    if (confirmation?.type === "clear") {
-      setData((previous) => ({
-        ...previous,
-        tests: previous.tests.filter(
-          (t) => t.stroke !== profile.stroke || t.event !== profile.event,
-        ),
-      }));
-      setNotice("Tests cleared for this stroke and event.");
-    }
-    if (confirmation?.type === "delete") {
-      setData((previous) => ({
-        ...previous,
-        tests: previous.tests.filter((t) => t.id !== confirmation.id),
-      }));
-      setNotice("Test deleted.");
-    }
-    setConfirmation(null);
-  }
-  const jumpToForm = () => {
+  function demo() {
+    const demoAthlete = data.athletes.find((a) => a.isDemo);
+    if (demoAthlete) {
+      selectAthlete(demoAthlete.id);
+    } else setData(addDemo);
     setTab("Dashboard");
-    setTimeout(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      formRef.current?.querySelector("input")?.focus({ preventScroll: true });
-    }, 50);
-  };
+    setNotice(
+      "Separate demo workspace selected. Your real observations were kept.",
+    );
+  }
+  function saveTrial(input: TrialInput) {
+    if (!session) return;
+    const existing = modal?.type === "test" ? modal.test : undefined;
+    setData((d) => ({
+      ...d,
+      tests: existing
+        ? d.tests.map((t) => (t.id === existing.id ? { ...t, ...input } : t))
+        : [
+            ...d.tests,
+            {
+              ...input,
+              id: crypto.randomUUID(),
+              sessionId: session.id,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+    }));
+    setModal(null);
+    setNotice(existing ? "Observation updated." : "Observation added.");
+  }
+  async function readBackup(file: File | undefined) {
+    setImportError("");
+    if (!file) return;
+    try {
+      if (file.size > 10_000_000)
+        throw new Error("Backup exceeds the 10 MB limit.");
+      setPendingBackup(parseBackup(await file.text()));
+    } catch (e) {
+      setImportError(
+        `Import rejected: ${e instanceof Error ? e.message : "Invalid file"}. Current data is unchanged.`,
+      );
+    }
+  }
+  function restore() {
+    if (!pendingBackup) return;
+    const error = saveData(pendingBackup);
+    if (error) {
+      setImportError(`Restore was not applied. ${error}`);
+      return;
+    }
+    setData(pendingBackup);
+    setPendingBackup(null);
+    setStorageError(null);
+    setSavingEnabled(true);
+    setImportError("");
+    setNotice("Backup restored and saved in this browser.");
+  }
+  const testLog = (
+    <TrialLog
+      tests={sorted}
+      bestTime={ready ? best?.time : undefined}
+      onEdit={(test) => setModal({ type: "test", test })}
+      onMove={(test) => {
+        setMoveTarget("");
+        setModal({ type: "move", test });
+      }}
+      onDelete={(test) =>
+        setConfirmation({
+          title: "Delete this observation?",
+          description:
+            "This removes one observation from this browser. It cannot be undone.",
+          action: () => {
+            setData((d) => ({
+              ...d,
+              tests: d.tests.filter((t) => t.id !== test.id),
+            }));
+            setNotice("Observation deleted.");
+          },
+        })
+      }
+      onClear={() =>
+        setConfirmation({
+          title: "Clear session tests?",
+          description: `Remove all ${tests.length} observations from “${session?.name}”? Other sessions are kept. This cannot be undone.`,
+          action: () => {
+            setData((d) => ({
+              ...d,
+              tests: d.tests.filter((t) => t.sessionId !== session?.id),
+            }));
+            setNotice("Session observations cleared.");
+          },
+        })
+      }
+    />
+  );
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <a
-          className="brand"
-          href="#"
-          aria-label="Underwater Optimizer dashboard"
-          onClick={(e) => {
-            e.preventDefault();
-            setTab("Dashboard");
-          }}
-        >
-          <span className="brand-mark">
-            <Waves size={26} strokeWidth={2.4} />
-          </span>
-          <span>
-            UNDERWATER<small>OPTIMIZER</small>
-          </span>
-        </a>
-        <div className="workspace-label">
-          PERFORMANCE LAB <span>V0.1</span>
-        </div>
-        <nav aria-label="Main navigation">
-          {[
-            { name: "Dashboard", icon: LayoutDashboard },
-            { name: "Tests", icon: FlaskConical },
-            { name: "Simulator", icon: Activity },
-          ].map(({ name, icon: Icon }) => (
-            <button
-              key={name}
-              className={`nav-item ${tab === name ? "active" : ""}`}
-              onClick={() => setTab(name)}
-            >
-              <Icon size={19} />
-              <span>{name}</span>
-              {name === "Simulator" ? (
-                <small>SOON</small>
-              ) : (
-                tab === name && <span className="nav-dot" />
-              )}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-note">
-          <div className="mini-icon">
-            <Waves size={20} />
-          </div>
-          <h3>
-            Small details.
-            <br />
-            Faster swimming.
-          </h3>
-          <p>Turn your poolside tests into a clearer race strategy.</p>
-          <span className="small-line" />
-        </div>
-        <div className="sidebar-bottom">
-          <button onClick={() => setHelp(true)}>
-            <CircleHelp size={17} /> How it works <ArrowUpRight size={14} />
-          </button>
-          <div className="local-status">
-            <span className={`status-dot ${storageError ? "warning" : ""}`} />
-            {storageError ? "In-memory mode" : "Stored on this browser"}
-          </div>
-        </div>
-      </aside>
-      <div className="main-shell">
-        <header className="topbar">
-          <div className="breadcrumb">
-            Performance lab <ChevronRight size={14} />
-            <strong>{tab}</strong>
-          </div>
-          <div className="topbar-right">
-            <span className="private-label">
-              <span className="status-dot" /> LOCAL WORKSPACE
+    <>
+      <div className="app-shell no-print">
+        <aside className="sidebar">
+          <a
+            href="#"
+            className="brand"
+            onClick={(e) => {
+              e.preventDefault();
+              setTab("Dashboard");
+            }}
+          >
+            <span className="brand-mark">
+              <Waves size={26} />
             </span>
-            <button
-              className="avatar"
-              aria-label="About this workspace"
-              onClick={() => setHelp(true)}
-            >
-              SW
-            </button>
+            <span>
+              UNDERWATER<small>OPTIMIZER</small>
+            </span>
+          </a>
+          <div className="workspace-label">
+            PERFORMANCE LAB <span>V0.2</span>
           </div>
-        </header>
-        <main>
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">
-                <span /> THE UNDERWATER ADVANTAGE
-              </div>
-              <h1>
-                {tab === "Dashboard"
-                  ? "Find your fastest breakout."
-                  : tab === "Tests"
-                    ? "Every test tells a story."
-                    : "Your next race, reimagined."}
-              </h1>
-              <p>
-                {tab === "Dashboard"
-                  ? "Less guesswork. More speed. Let your poolside data lead the way."
-                  : tab === "Tests"
-                    ? "Compare your observations. Build a more informed strategy."
-                    : "A new perspective on race strategy is on the horizon."}
-              </p>
-            </div>
-            <button
-              className="button secondary demo-button"
-              onClick={() =>
-                tests.length ? setConfirmation({ type: "demo" }) : loadDemo()
-              }
-            >
-              <Database size={16} />
-              Load demo data
-              <ArrowUpRight size={15} />
-            </button>
-          </div>
-          {storageError && (
-            <div className="storage-banner" role="alert">
-              <Info size={18} />
-              <span>{storageError}</span>
+          <nav aria-label="Main navigation">
+            {[
+              { name: "Dashboard", icon: LayoutDashboard },
+              { name: "Tests", icon: FlaskConical },
+              { name: "Simulator", icon: Activity },
+            ].map(({ name, icon: Icon }) => (
               <button
-                className="button secondary"
-                onClick={() => {
-                  const error = saveData(data);
-                  setStorageError(error);
-                  if (!error) setSavingEnabled(true);
-                }}
+                key={name}
+                className={`nav-item ${tab === name ? "active" : ""}`}
+                onClick={() => setTab(name)}
               >
-                {savingEnabled ? "Retry saving" : "Enable saving"}
+                <Icon size={19} />
+                <span>{name}</span>
+                {name === "Simulator" && <small>SOON</small>}
               </button>
+            ))}
+          </nav>
+          <div className="sidebar-note">
+            <Waves size={22} />
+            <h3>
+              Better observations.
+              <br />
+              Clearer decisions.
+            </h3>
+            <p>Same athlete. Same conditions. One session at a time.</p>
+          </div>
+          <div className="sidebar-bottom">
+            <button onClick={() => setModal({ type: "help" })}>
+              <CircleHelp size={18} />
+              How it works
+            </button>
+            <div className="local-status">
+              <span className={`status-dot ${storageError ? "warning" : ""}`} />
+              {storageError ? "In-memory changes" : "Stored in this browser"}
             </div>
-          )}
-          <section className="profile-bar" aria-label="Athlete profile">
-            <div className="profile-caption">
-              <span className="profile-icon">
-                <Waves size={22} />
-              </span>
+          </div>
+        </aside>
+        <div className="main-shell">
+          <header className="topbar">
+            <div className="breadcrumb">
+              Performance lab / <strong>{tab}</strong>
+            </div>
+            <button
+              className="text-button"
+              onClick={() => setModal({ type: "help" })}
+            >
+              <CircleHelp size={17} />
+              Local workspace · V0.2
+            </button>
+          </header>
+          <main>
+            <div className="page-heading">
               <div>
-                <strong>Athlete profile</strong>
-                <small>Your current focus</small>
+                <div className="eyebrow">
+                  <span />
+                  THE UNDERWATER ADVANTAGE
+                </div>
+                <h1>
+                  {tab === "Simulator"
+                    ? "Your next race, reimagined."
+                    : tab === "Tests"
+                      ? "Every test tells a story."
+                      : "Find your fastest breakout."}
+                </h1>
+                <p>
+                  Measured observations. Transparent comparisons. No hidden
+                  model.
+                </p>
               </div>
-            </div>
-            <label>
-              Stroke
-              <div className="select-wrap">
-                <select
-                  value={profile.stroke}
-                  onChange={(e) =>
-                    updateProfile({
-                      stroke: e.target.value as Profile["stroke"],
-                    })
-                  }
-                >
-                  {strokes.map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-                <ChevronDown size={14} />
-              </div>
-            </label>
-            <label>
-              Event
-              <div className="select-wrap">
-                <select
-                  value={profile.event}
-                  onChange={(e) =>
-                    updateProfile({
-                      event: Number(e.target.value) as Profile["event"],
-                    })
-                  }
-                >
-                  {events.map((v) => (
-                    <option key={v} value={v}>
-                      {v} m
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} />
-              </div>
-            </label>
-            <label className="pb-field">
-              Personal best <span className="muted">(optional)</span>
-              <div className="input-unit">
-                <input
-                  type="number"
-                  aria-label="Personal best"
-                  value={profile.personalBest}
-                  min="0.01"
-                  max="3600"
-                  step="0.01"
-                  placeholder="—"
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (
-                      value === "" ||
-                      (Number(value) > 0 && Number(value) <= 3600)
-                    )
-                      updateProfile({ personalBest: value });
-                  }}
-                />
-                <span>s</span>
-              </div>
-            </label>
-            <span className="profile-context">
-              {profile.stroke}
-              <span> / </span>
-              {profile.event} m
-            </span>
-          </section>
-          {tab === "Simulator" ? (
-            <section className="simulator panel">
-              <div className="simulator-icon">
-                <Activity size={34} />
-              </div>
-              <span className="pill">COMING IN V0.3</span>
-              <h2>See the bigger race picture.</h2>
-              <p>
-                A full race simulator is planned for a future release. For now,
-                build your strategy with measured underwater tests.
-              </p>
-              <button
-                className="button primary"
-                onClick={() => setTab("Dashboard")}
-              >
-                Back to dashboard
-                <ArrowRight size={16} />
+              <button className="button secondary" onClick={demo}>
+                <Database size={17} />
+                Load demo data
               </button>
-            </section>
-          ) : (
-            <>
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <span className="stat-caption">
-                    <span>TESTS RECORDED</span>
-                    <FlaskConical size={17} />
-                  </span>
-                  <div className="stat-value">
-                    {tests.length.toString().padStart(2, "0")}
-                    <span>tests</span>
-                  </div>
-                  <div className="stat-sub">
-                    {profile.stroke} · {profile.event} m
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <span className="stat-caption">
-                    <span>BEST 15 M TIME</span>
-                    <Timer size={17} />
-                  </span>
-                  <div className="stat-value">
-                    {best ? best.time.toFixed(2) : "—"}
-                    <span>s</span>
-                  </div>
-                  <div className="stat-sub">
-                    {best
-                      ? "Your fastest recorded performance"
-                      : "Your first benchmark starts here"}
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <span className="stat-caption">
-                    <span>BEST BREAKOUT</span>
-                    <Target size={17} />
-                  </span>
-                  <div className="stat-value">
-                    {best ? best.distance.toFixed(1) : "—"}
-                    <span>m</span>
-                  </div>
-                  <div className="stat-sub">
-                    {best
-                      ? `${tied.length > 1 ? "Joint fastest" : "Best observed"} · ${best.kicks} dolphin kicks`
-                      : "Add a test to find your distance"}
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <span className="stat-caption">
-                    <span>OBSERVED TIME GAIN</span>
-                    <TrendingDown size={17} />
-                  </span>
-                  <div
-                    className={`stat-value ${tests.length > 1 ? "accent" : ""}`}
-                  >
-                    {tests.length > 1 ? improvement.toFixed(2) : "—"}
-                    <span>s</span>
-                  </div>
-                  <div className="stat-sub">
-                    {tests.length > 1 ? (
-                      <>
-                        <ArrowDownRight size={14} /> Best vs. slowest test
-                      </>
-                    ) : (
-                      "Compare at least two observations"
-                    )}
-                  </div>
-                </div>
+            </div>
+            {storageError && (
+              <div className="storage-banner" role="alert">
+                <span>{storageError}</span>
+                <button
+                  className="button secondary"
+                  onClick={() => {
+                    const error = saveData(data);
+                    setStorageError(error);
+                    if (!error) setSavingEnabled(true);
+                  }}
+                >
+                  {savingEnabled ? "Retry saving" : "Enable saving"}
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={() =>
+                    download(
+                      JSON.stringify(data, null, 2),
+                      "underwater-backup.json",
+                      "application/json",
+                    )
+                  }
+                >
+                  Download backup
+                </button>
               </div>
-              {tab === "Dashboard" && (
-                <>
-                  <div className="analysis-grid">
-                    <section className="panel chart-panel">
-                      <div className="panel-heading">
-                        <div>
-                          <h2>Breakout performance</h2>
-                          <p>The distance–speed relationship, measured.</p>
-                        </div>
-                        <span className="pill muted-pill">15 M TEST</span>
-                      </div>
-                      {tests.length ? (
-                        <Suspense
-                          fallback={
-                            <div className="chart-empty">
-                              Loading performance chart…
-                            </div>
-                          }
-                        >
-                          <PerformanceChart tests={sorted} best={best} />
-                        </Suspense>
-                      ) : (
-                        <div className="chart-empty">
-                          <div className="empty-chart-lines">
-                            <TrendingDown size={40} strokeWidth={1} />
-                          </div>
-                          <h3>Your next breakthrough starts here.</h3>
-                          <p>
-                            Add your first test or load the demo to explore your
-                            performance.
-                          </p>
-                          <button className="text-button" onClick={loadDemo}>
-                            Explore demo data <ArrowRight size={15} />
-                          </button>
-                        </div>
-                      )}
-                      <div className="chart-footer">
-                        <div>
-                          <span className="legend-dot blue" />
-                          Observed test
-                          <span className="legend-dot green" />
-                          Best performance
-                        </div>
-                        <span>
-                          Lower time is faster <ArrowDownRight size={13} />
-                        </span>
-                      </div>
-                    </section>
-                    <section className="panel optimal-card">
-                      <div className="optimal-heading">
-                        <span className="trophy-icon">
-                          <Trophy size={18} />
-                        </span>
-                        <span>OPTIMAL UNDERWATER</span>
-                        <Info
-                          size={15}
-                          aria-label="Based on the fastest observed test"
-                        />
-                      </div>
-                      <div className="best-observed-label">
-                        BEST OBSERVED PERFORMANCE
-                      </div>
-                      <div className="optimal-distance">
-                        {best ? best.distance.toFixed(1) : "—"}
-                        <span>m</span>
-                      </div>
-                      <p className="optimal-description">
-                        {best
-                          ? "Your breakout sweet spot."
-                          : "Find your breakout sweet spot."}
-                      </p>
-                      <div className="optimal-details">
-                        <div>
-                          <Zap size={15} />
-                          <span>Dolphin kicks</span>
-                          <strong>{best?.kicks ?? "—"}</strong>
-                        </div>
-                        <div>
-                          <Timer size={15} />
-                          <span>15 m time</span>
-                          <strong>
-                            {best ? `${best.time.toFixed(2)} s` : "—"}
-                          </strong>
-                        </div>
-                      </div>
-                      <div className="gain-note">
-                        <TrendingDown size={17} />
-                        <span>
-                          {tests.length > 1 ? (
-                            <>
-                              <strong>{improvement.toFixed(2)} s faster</strong>{" "}
-                              than your slowest test.
-                            </>
-                          ) : tests.length ? (
-                            "Add another test to compare your times."
-                          ) : (
-                            "Add a test to reveal your strategy."
-                          )}
-                        </span>
-                      </div>
-                      <p className="optimal-disclaimer">
-                        {tied.length > 1
-                          ? `${tied.length} tests share the fastest time. Showing the shortest breakout. `
-                          : ""}
-                        Based on your recorded tests, not a guaranteed
-                        physiological optimum.
-                      </p>
-                    </section>
-                  </div>
-                  <section className="panel pool-panel">
-                    <div className="panel-heading">
-                      <div>
-                        <h2>Your underwater, visualized</h2>
-                        <p>From the wall to the surface.</p>
-                      </div>
-                      <span className="limit-label">
-                        <span />
-                        15 m regulatory limit
-                      </span>
-                    </div>
-                    <div className="pool-track-wrap">
-                      <div className="pool-track">
-                        <div className="pool-water" />
-                        <div className="lane-rope top" />
-                        <div className="lane-rope bottom" />
-                        <div className="pool-center-line" />
-                        {[0, 5, 10, 15].map((m) => (
-                          <div
-                            key={m}
-                            className="pool-tick"
-                            style={{ left: `${(m / 15) * 100}%` }}
-                          />
-                        ))}
-                        {best && (
-                          <div
-                            className="breakout-marker"
-                            style={{ left: `${(best.distance / 15) * 100}%` }}
-                          >
-                            <div
-                              className={`marker-label ${best.distance > 12 ? "right-edge" : best.distance < 3 ? "left-edge" : ""}`}
-                            >
-                              <span />
-                              {best.distance.toFixed(1)} m{" "}
-                              <span className="marker-word">BREAKOUT</span>
-                            </div>
-                            <div className="marker-line" />
-                            <span className="marker-dot">
-                              <Waves size={17} />
-                            </span>
-                          </div>
-                        )}
-                        <div className="pool-wall" />
-                      </div>
-                      <div className="pool-scale">
-                        {[0, 5, 10, 15].map((m) => (
-                          <span key={m} style={{ left: `${(m / 15) * 100}%` }}>
-                            {m} m
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="pool-footnote">
-                      <Info size={13} />
-                      {best
-                        ? `Highlighted: best observed breakout for ${profile.stroke.toLowerCase()}, ${profile.event} m.`
-                        : "Your best observed breakout will appear here."}
-                      <span>Head must break the surface by 15 m.</span>
-                    </div>
-                  </section>
-                </>
-              )}
-              <div className={tab === "Dashboard" ? "entry-grid" : ""}>
-                <section ref={formRef} className="panel add-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>
-                        <Plus size={18} />
-                        Add a test
-                      </h2>
-                      <p>One observation closer to your fastest breakout.</p>
-                    </div>
-                    <span className="step-badge">01—15 M</span>
-                  </div>
-                  <TestForm
-                    key={profileKey(profile)}
-                    tests={tests}
-                    onSave={addTest}
-                  />
-                </section>
-                {tab === "Dashboard" && (
-                  <section className="panel insights-panel">
-                    <div className="panel-heading">
-                      <div>
-                        <h2>
-                          <Sparkles size={17} />
-                          From the data
-                        </h2>
-                        <p>Clear observations. No black box.</p>
-                      </div>
-                    </div>
-                    <div className="insights">
-                      {!best ? (
-                        <div className="insight">
-                          <span className="insight-number">01</span>
-                          <div>
-                            <h3>Start with a baseline.</h3>
-                            <p>
-                              Record a test to see your fastest observed
-                              breakout. Add different distances to compare.
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="insight">
-                            <span className="insight-number">01</span>
-                            <div>
-                              <h3>
-                                {tied.length > 1
-                                  ? "A shared fastest result."
-                                  : "Your fastest observed breakout."}
-                              </h3>
-                              <p>
-                                {best.distance.toFixed(1)} m with {best.kicks}{" "}
-                                dolphin kicks produced{" "}
-                                {tied.length > 1 ? "a joint-best" : "your best"}{" "}
-                                15 m time of{" "}
-                                <strong>{best.time.toFixed(2)} s</strong>.
-                              </p>
-                            </div>
-                          </div>
-                          <div className="insight">
-                            <span className="insight-number">02</span>
-                            <div>
-                              <h3>
-                                {longer
-                                  ? "Longer isn’t always faster."
-                                  : "Keep exploring your range."}
-                              </h3>
-                              <p>
-                                {longer ? (
-                                  <>
-                                    The {longer.distance.toFixed(1)} m test was{" "}
-                                    <strong>
-                                      {(longer.time - best.time).toFixed(2)} s
-                                      slower
-                                    </strong>{" "}
-                                    than the {best.distance.toFixed(1)} m test.
-                                    This comparison does not prove causation.
-                                  </>
-                                ) : (
-                                  "Test more breakout distances under similar conditions before drawing a broader conclusion."
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                      <div className="insight-footer">
-                        <Radio size={14} />
-                        <span>
-                          {tests.length < 2
-                            ? "More observations build a clearer picture."
-                            : "Repeat each distance to check consistency."}
-                        </span>
-                      </div>
-                    </div>
-                  </section>
-                )}
+            )}
+            {importError && (
+              <div className="storage-banner" role="alert">
+                {importError}
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss import error"
+                  onClick={() => setImportError("")}
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <section className="panel table-panel">
-                <div className="panel-heading">
-                  <div>
-                    <h2>
-                      Test log{" "}
-                      <span className="count-badge">{tests.length}</span>
-                    </h2>
-                    <p>Every observation, in one place.</p>
-                  </div>
-                  <div className="table-tools">
-                    <span>
-                      <ListFilter size={14} />
-                      Breakout ↑
-                    </span>
-                    <button
-                      className="text-button danger-text"
-                      disabled={!tests.length}
-                      onClick={() => setConfirmation({ type: "clear" })}
+            )}
+            <section
+              className="panel context-panel"
+              aria-label="Athlete and session"
+            >
+              <div className="context-selectors">
+                <div>
+                  <label htmlFor="athlete">Athlete</label>
+                  <div className="select-actions">
+                    <select
+                      id="athlete"
+                      value={athlete?.id ?? ""}
+                      onChange={(e) => selectAthlete(e.target.value)}
                     >
-                      <Trash2 size={14} />
-                      Clear data
+                      <option value="" disabled>
+                        Select athlete
+                      </option>
+                      {data.athletes.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                          {a.isDemo ? " · DEMO" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="icon-button"
+                      aria-label="Create athlete"
+                      onClick={() => setModal({ type: "athlete" })}
+                    >
+                      <Plus size={20} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label="Rename athlete"
+                      disabled={!athlete}
+                      onClick={() => setModal({ type: "athlete", athlete })}
+                    >
+                      <Pencil size={17} />
                     </button>
                   </div>
                 </div>
-                {!tests.length ? (
-                  <div className="table-empty">
-                    <FlaskConical size={26} />
-                    <h3>No tests recorded yet.</h3>
-                    <p>
-                      Your tests for {profile.stroke.toLowerCase()},{" "}
-                      {profile.event} m will appear here.
-                    </p>
+                <div>
+                  <label htmlFor="session">Session</label>
+                  <div className="select-actions">
+                    <select
+                      id="session"
+                      value={session?.id ?? ""}
+                      onChange={(e) =>
+                        setData((d) => ({
+                          ...d,
+                          selectedSessionId: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="" disabled>
+                        Select session
+                      </option>
+                      {sessions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                          {!sessionComplete(s) ? " · incomplete" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="icon-button"
+                      aria-label="Create session"
+                      disabled={!athlete}
+                      onClick={() => setModal({ type: "session" })}
+                    >
+                      <Plus size={20} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label="Edit session"
+                      disabled={!session}
+                      onClick={() => setModal({ type: "session", session })}
+                    >
+                      <Pencil size={17} />
+                    </button>
                   </div>
-                ) : (
-                  <div className="table-scroll">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>TEST</th>
-                          <th>BREAKOUT</th>
-                          <th>KICKS</th>
-                          <th>15 M TIME</th>
-                          <th>Δ FROM BEST</th>
-                          <th>NOTES</th>
-                          <th>
-                            <span className="sr-only">Actions</span>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sorted.map((t) => (
-                          <tr
-                            key={t.id}
-                            className={t.time === best?.time ? "best-row" : ""}
-                          >
-                            <td>
-                              <span className="test-name">
-                                {t.time === best?.time ? (
-                                  <span className="row-dot green" />
-                                ) : (
-                                  <span className="row-dot" />
-                                )}
-                                Test{" "}
-                                {tests.findIndex((item) => item.id === t.id) +
-                                  1 <
-                                10
-                                  ? "0"
-                                  : ""}
-                                {tests.findIndex((item) => item.id === t.id) +
-                                  1}
-                                {t.time === best?.time && (
-                                  <span className="best-badge">BEST</span>
-                                )}
-                              </span>
-                            </td>
-                            <td>
-                              {t.distance.toFixed(1)}{" "}
-                              <span className="muted">m</span>
-                            </td>
-                            <td>{t.kicks}</td>
-                            <td>
-                              <strong>
-                                {t.time.toFixed(2)}{" "}
-                                <span className="muted">s</span>
-                              </strong>
-                            </td>
-                            <td
-                              className={
-                                t.time === best?.time ? "accent" : "muted"
-                              }
-                            >
-                              {t.time === best?.time
-                                ? "—"
-                                : `+${(t.time - best!.time).toFixed(2)} s`}
-                            </td>
-                            <td className="notes-cell" title={t.notes}>
-                              {t.notes || "—"}
-                            </td>
-                            <td>
-                              <div className="row-actions">
-                                <button
-                                  className="icon-button"
-                                  aria-label={`Edit test ${tests.findIndex((item) => item.id === t.id) + 1}`}
-                                  onClick={() => setEditing(t)}
-                                >
-                                  <Pencil size={14} />
-                                </button>
-                                <button
-                                  className="icon-button delete-button"
-                                  aria-label={`Delete test ${tests.findIndex((item) => item.id === t.id) + 1}`}
-                                  onClick={() =>
-                                    setConfirmation({
-                                      type: "delete",
-                                      id: t.id,
-                                    })
-                                  }
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                </div>
+              </div>
+              {session && (
+                <div className="session-metadata">
+                  <span>{session.date ?? "Date unknown"}</span>
+                  <span>
+                    {session.stroke} · {session.event} m
+                  </span>
+                  <span>
+                    {session.pool ? `${session.pool} m pool` : "Pool unknown"}
+                  </span>
+                  <span>{session.startType ?? "Start type unknown"}</span>
+                  {athlete?.isDemo && (
+                    <strong className="demo-tag">
+                      DEMO · not your real data
+                    </strong>
+                  )}
+                </div>
+              )}
+            </section>
+            <div className="workspace-toolbar">
+              <div className="toolbar-actions">
+                <button
+                  className="button secondary"
+                  disabled={!tests.length}
+                  onClick={() =>
+                    session &&
+                    download(
+                      csvForSession(data, session),
+                      "underwater-session.csv",
+                      "text/csv;charset=utf-8",
+                    )
+                  }
+                >
+                  <Download size={16} />
+                  Export CSV
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={() =>
+                    download(
+                      JSON.stringify(data, null, 2),
+                      "underwater-backup.json",
+                      "application/json",
+                    )
+                  }
+                >
+                  <Download size={16} />
+                  Backup JSON
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Upload size={16} />
+                  Restore backup
+                </button>
+                <button
+                  className="button secondary"
+                  disabled={!session}
+                  onClick={() => window.print()}
+                >
+                  <Printer size={16} />
+                  Print summary
+                </button>
+                <input
+                  className="sr-only"
+                  type="file"
+                  accept=".json,application/json"
+                  aria-label="Backup file"
+                  ref={fileRef}
+                  onChange={(e) => {
+                    void readBackup(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+              <p>Local to this browser · no device sync</p>
+            </div>
+            {!athlete ? (
+              <section className="panel welcome-panel">
+                <Users size={36} />
+                <h2>Your next breakthrough starts here.</h2>
+                <p>
+                  Create an athlete and a session, then record comparable
+                  underwater tests. Or explore the demo without touching your
+                  real data.
+                </p>
+                <button
+                  className="button primary"
+                  onClick={() => setModal({ type: "athlete" })}
+                >
+                  <Plus size={18} />
+                  Create athlete
+                </button>
+              </section>
+            ) : !session ? (
+              <section className="panel welcome-panel">
+                <h2>Start a session for {athlete.name}.</h2>
+                <p>
+                  Set the date, stroke, event, pool and start type before
+                  collecting observations.
+                </p>
+                <button
+                  className="button primary"
+                  onClick={() => setModal({ type: "session" })}
+                >
+                  Create session
+                  <Plus size={18} />
+                </button>
+              </section>
+            ) : (
+              <>
+                {!ready && (
+                  <div className="incomplete-banner">
+                    <h2>Imported session · conditions need review</h2>
+                    <p>
+                      Date, pool length and start type were not recorded in
+                      V0.1. No conditions have been inferred, and no performance
+                      comparison is shown yet. Check whether these observations
+                      actually belong to the same session.
+                    </p>
+                    <p>
+                      If conditions differed, create the appropriate sessions
+                      and use each test’s “Move” action first. Then complete
+                      this session only with conditions you know.
+                    </p>
+                    <button
+                      className="button secondary"
+                      onClick={() => setModal({ type: "session", session })}
+                    >
+                      Complete session conditions
+                    </button>
                   </div>
                 )}
-                <div className="table-footer">
-                  <span>
-                    <Database size={13} />
-                    {storageError
-                      ? "Changes held in this tab only"
-                      : "Saved locally. Your data stays in this browser."}
-                  </span>
-                  <span>
-                    {tests.length} observation{tests.length === 1 ? "" : "s"}
-                    {worst && tests.length > 1
-                      ? ` · ${best!.time.toFixed(2)}–${worst.time.toFixed(2)} s`
-                      : ""}
-                  </span>
-                </div>
-              </section>
-            </>
-          )}
-          <footer className="page-footer">
-            <span>
-              <Waves size={16} />
-              UNDERWATER OPTIMIZER<span className="footer-version">V0.1</span>
-            </span>
-            <p>Measured in the pool. Understood here.</p>
-            <button onClick={() => setHelp(true)}>
-              About the analysis <ArrowUpRight size={12} />
-            </button>
-          </footer>
-        </main>
-      </div>
-      {notice && (
-        <div className="toast" role="status">
-          <Check size={17} />
-          {notice}
-          <button
-            className="icon-button"
-            aria-label="Dismiss notification"
-            onClick={() => setNotice("")}
-          >
-            <X size={15} />
-          </button>
+                {tab === "Simulator" ? (
+                  <section className="simulator panel">
+                    <Activity size={38} />
+                    <span className="pill">COMING SOON</span>
+                    <h2>A full race simulator is planned.</h2>
+                    <p>
+                      For now, explore your measured tests. No race prediction
+                      is provided.
+                    </p>
+                    <button
+                      className="button primary"
+                      onClick={() => setTab("Dashboard")}
+                    >
+                      Back to dashboard
+                      <ArrowRight size={17} />
+                    </button>
+                  </section>
+                ) : (
+                  <>
+                    <div className="record-toolbar">
+                      <div>
+                        <h2>{session.name}</h2>
+                        <p>
+                          {athlete.name} · comparisons use this session only
+                        </p>
+                      </div>
+                      <div>
+                        <button
+                          className="button secondary"
+                          disabled={!ready || !last}
+                          onClick={() =>
+                            setModal({ type: "test", repeat: last })
+                          }
+                        >
+                          <RotateCcw size={17} />
+                          Repeat last test
+                        </button>
+                        <button
+                          className="button primary"
+                          disabled={!ready}
+                          onClick={() => setModal({ type: "test" })}
+                        >
+                          <Plus size={18} />
+                          New test
+                        </button>
+                      </div>
+                    </div>
+                    {ready && (
+                      <div className="stats-grid">
+                        <Stat
+                          title="TESTS RECORDED"
+                          value={String(tests.length)}
+                          unit="tests"
+                          note="One athlete. One session."
+                        />
+                        <Stat
+                          title="BEST OBSERVED TIME"
+                          value={best ? best.time.toFixed(2) : "—"}
+                          unit="s"
+                          note={
+                            best
+                              ? `${tied.length} fastest observation${tied.length > 1 ? "s" : ""}`
+                              : "Add your first observation"
+                          }
+                        />
+                        <Stat
+                          title="BEST OBSERVED BREAKOUT"
+                          value={best ? String(best.distance) : "—"}
+                          unit="m"
+                          note={
+                            best
+                              ? `${best.kicks} dolphin kicks · individual test`
+                              : "No prediction is made"
+                          }
+                        />
+                        <Stat
+                          title="BEST–WORST DIFFERENCE"
+                          value={tests.length > 1 ? spread.toFixed(2) : "—"}
+                          unit="s"
+                          note="Spread within this session, not progress"
+                        />
+                      </div>
+                    )}
+                    {ready && tab === "Dashboard" && (
+                      <>
+                        <div className="analysis-grid">
+                          <section className="panel chart-panel">
+                            <div className="panel-heading">
+                              <div>
+                                <h2>Breakout performance</h2>
+                                <p>
+                                  Every recorded test. Lower time is faster.
+                                </p>
+                              </div>
+                            </div>
+                            {tests.length ? (
+                              <Suspense
+                                fallback={
+                                  <div className="chart-empty">
+                                    Loading chart…
+                                  </div>
+                                }
+                              >
+                                <PerformanceChart
+                                  key={session.id}
+                                  tests={sorted}
+                                  best={best}
+                                />
+                              </Suspense>
+                            ) : (
+                              <div className="chart-empty">
+                                <h3>No observations yet.</h3>
+                                <p>
+                                  Use New test to begin, or open the separate
+                                  demo workspace.
+                                </p>
+                              </div>
+                            )}
+                          </section>
+                          <section className="panel optimal-card v2-best">
+                            <div className="optimal-heading">
+                              BEST OBSERVED TEST
+                            </div>
+                            <div className="best-observed-label">
+                              INDIVIDUAL OBSERVATION
+                            </div>
+                            <div className="optimal-distance">
+                              {best ? best.distance : "—"}
+                              <span>m</span>
+                            </div>
+                            <div className="optimal-details">
+                              <div>
+                                <span>Dolphin kicks</span>
+                                <strong>{best?.kicks ?? "—"}</strong>
+                              </div>
+                              <div>
+                                <span>15 m time</span>
+                                <strong>
+                                  {best ? `${best.time.toFixed(2)} s` : "—"}
+                                </strong>
+                              </div>
+                            </div>
+                            <p className="optimal-disclaimer">
+                              {tied.length > 1
+                                ? `${tied.length} fastest ties. The summary shows the shortest tied distance. `
+                                : ""}
+                              One best observation does not establish the most
+                              consistent strategy or a physiological optimum.
+                            </p>
+                            {best && (
+                              <p className="preliminary">
+                                {analysis.preliminary
+                                  ? "Preliminary result · collect more comparable repeats."
+                                  : "Descriptive result · no guarantee of reliability."}
+                              </p>
+                            )}
+                          </section>
+                        </div>
+                        <PoolLane distance={best?.distance} />
+                      </>
+                    )}
+                    {ready && <Statistics tests={tests} />}
+                    {testLog}
+                    {ready && (
+                      <section className="panel practice-panel">
+                        <h2>Make the next comparison count.</h2>
+                        <p>
+                          Keep timing method, effort, rest and conditions
+                          similar. Test each distance more than once. A change
+                          in recorded time does not prove that distance caused
+                          it.
+                        </p>
+                        {athlete && (
+                          <PersonalBest
+                            key={`${athlete.id}-${session.stroke}-${session.event}`}
+                            value={
+                              athlete.personalBests[
+                                `${session.stroke}-${session.event}`
+                              ] ?? ""
+                            }
+                            onSave={(value) =>
+                              setData((d) => ({
+                                ...d,
+                                athletes: d.athletes.map((a) =>
+                                  a.id === athlete.id
+                                    ? {
+                                        ...a,
+                                        personalBests: {
+                                          ...a.personalBests,
+                                          [`${session.stroke}-${session.event}`]:
+                                            value,
+                                        },
+                                      }
+                                    : a,
+                                ),
+                              }))
+                            }
+                          />
+                        )}
+                      </section>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+            <footer className="page-footer">
+              <span>
+                <Waves size={18} />
+                UNDERWATER OPTIMIZER · V0.2
+              </span>
+              <p>Observed performance, not a validated biomechanical model.</p>
+              <button onClick={() => setModal({ type: "help" })}>
+                About the analysis
+              </button>
+            </footer>
+          </main>
         </div>
-      )}
-      {editing && (
-        <Dialog title="Edit test" onClose={() => setEditing(null)}>
-          <p className="modal-description">
-            Update this observation for {editing.stroke}, {editing.event} m.
-          </p>
-          <TestForm
-            initial={editing}
-            tests={tests}
-            onCancel={() => setEditing(null)}
-            onSave={(input) => {
-              setData((previous) => ({
-                ...previous,
-                tests: previous.tests.map((t) =>
-                  t.id === editing.id ? { ...t, ...input } : t,
-                ),
-              }));
-              setEditing(null);
-              setNotice("Test updated.");
-            }}
-          />
-        </Dialog>
-      )}
-      {confirmation && (
-        <Dialog
-          title={
-            confirmation.type === "demo"
-              ? "Replace with demo data?"
-              : confirmation.type === "clear"
-                ? "Clear these tests?"
-                : "Delete this test?"
-          }
-          onClose={() => setConfirmation(null)}
-        >
-          <p className="modal-description">
-            {confirmation.type === "demo"
-              ? `This replaces the tests for ${profile.stroke}, ${profile.event} m with four demo observations.`
-              : confirmation.type === "clear"
-                ? `All ${tests.length} tests for ${profile.stroke}, ${profile.event} m will be removed. Your other stroke and event data will be kept.`
-                : "This observation will be permanently removed from this browser."}{" "}
-            This action cannot be undone.
-          </p>
-          <div className="modal-actions">
+        {ready && tab !== "Simulator" && (
+          <button
+            className="mobile-new button primary"
+            onClick={() => setModal({ type: "test" })}
+          >
+            <Plus size={20} />
+            New test
+          </button>
+        )}
+        {notice && (
+          <div className="toast" role="status">
+            <Check size={18} />
+            {notice}
             <button
-              className="button secondary"
-              onClick={() => setConfirmation(null)}
+              className="icon-button"
+              aria-label="Dismiss notification"
+              onClick={() => setNotice("")}
             >
-              Cancel
-            </button>
-            <button
-              className={`button ${confirmation.type === "demo" ? "primary" : "danger"}`}
-              onClick={confirmAction}
-            >
-              {confirmation.type === "demo"
-                ? "Load demo data"
-                : confirmation.type === "clear"
-                  ? "Clear tests"
-                  : "Delete test"}
+              <X size={17} />
             </button>
           </div>
-        </Dialog>
-      )}
-      {help && (
-        <Dialog
-          title="Your data. Your fastest breakout."
-          onClose={() => setHelp(false)}
-        >
-          <div className="help-content">
-            <p>
-              Record the distance where your head breaks the surface, your
-              dolphin kicks, and your time from the start or turn to 15 meters.
-              Keep starts and turns, timing methods, and effort consistent when
-              comparing tests.
-            </p>
-            <h3>How the analysis works</h3>
-            <p>
-              The fastest entered 15 m time is your best observed performance.
-              Time gain compares that result with the slowest test for the
-              selected stroke and event. All fastest ties are highlighted; the
-              summary shows the shortest tied breakout.
-            </p>
-            <p>
-              Repeated and similar tests are retained individually. The chart
-              uses a 0–15 m horizontal axis and a vertical time axis starting at
-              zero. Exact overlapping points can be read separately in the test
-              log.
-            </p>
-            <h3>Know the limits</h3>
-            <p>
-              Freestyle, backstroke and butterfly require the head to break the
-              surface by 15 m after a start or turn. V0.1 provides observations,
-              not a validated biomechanical model, medical advice, or a
-              guarantee of race performance.
-            </p>
-            <h3>Private to this browser</h3>
-            <p>
-              There is no account or cloud sync. Data is stored in this browser
-              when storage is available. Clearing browser data removes it.
-              Personal best is contextual and does not influence the
-              calculations.
-            </p>
-            <button
-              className="button primary"
-              onClick={() => {
-                setHelp(false);
-                jumpToForm();
+        )}
+        {modal?.type === "athlete" && (
+          <Dialog
+            title={modal.athlete ? "Rename athlete" : "Create athlete"}
+            onClose={() => setModal(null)}
+          >
+            <NameForm
+              initial={modal.athlete?.name}
+              onCancel={() => setModal(null)}
+              onSave={(name) => {
+                const existing = modal.athlete;
+                if (existing)
+                  setData((d) => ({
+                    ...d,
+                    athletes: d.athletes.map((a) =>
+                      a.id === existing.id ? { ...a, name } : a,
+                    ),
+                  }));
+                else {
+                  const id = crypto.randomUUID();
+                  setData((d) => ({
+                    ...d,
+                    athletes: [
+                      ...d.athletes,
+                      { id, name, isDemo: false, personalBests: {} },
+                    ],
+                    selectedAthleteId: id,
+                    selectedSessionId: null,
+                  }));
+                }
+                setModal(null);
               }}
-            >
-              Record a test
-              <Plus size={16} />
-            </button>
-          </div>
-        </Dialog>
-      )}
+            />
+          </Dialog>
+        )}
+        {modal?.type === "session" && athlete && (
+          <Dialog
+            title={modal.session ? "Edit session" : "Create session"}
+            onClose={() => setModal(null)}
+          >
+            <SessionForm
+              initial={modal.session}
+              hasTests={
+                !!modal.session &&
+                data.tests.some((t) => t.sessionId === modal.session!.id)
+              }
+              onCancel={() => setModal(null)}
+              onSave={(values) => {
+                const existing = modal.session;
+                if (existing)
+                  setData((d) => ({
+                    ...d,
+                    sessions: d.sessions.map((s) =>
+                      s.id === existing.id ? { ...s, ...values } : s,
+                    ),
+                  }));
+                else {
+                  const id = crypto.randomUUID();
+                  setData((d) => ({
+                    ...d,
+                    sessions: [
+                      ...d.sessions,
+                      { ...values, id, athleteId: athlete.id, imported: false },
+                    ],
+                    selectedSessionId: id,
+                  }));
+                }
+                setModal(null);
+                setNotice("Session saved.");
+              }}
+            />
+          </Dialog>
+        )}
+        {modal?.type === "test" && (
+          <Dialog
+            title={
+              modal.test
+                ? "Edit observation"
+                : modal.repeat
+                  ? "Repeat last test"
+                  : "New test"
+            }
+            onClose={() => setModal(null)}
+          >
+            <p className="modal-description">
+              {athlete?.name} · {session?.name}
+            </p>
+            <TestForm
+              tests={tests}
+              initial={modal.test}
+              repeat={modal.repeat}
+              onSave={saveTrial}
+              onCancel={() => setModal(null)}
+            />
+          </Dialog>
+        )}
+        {modal?.type === "move" && (
+          <Dialog title="Move observation" onClose={() => setModal(null)}>
+            <div className="context-form">
+              <p>
+                Move this test into the correct session for the same athlete,
+                stroke and event. Verify the actual date, pool and start type
+                before moving.
+              </p>
+              <label>
+                Destination session
+                <select
+                  value={moveTarget}
+                  onChange={(e) => setMoveTarget(e.target.value)}
+                >
+                  <option value="" disabled>
+                    Select destination
+                  </option>
+                  {sessions
+                    .filter(
+                      (s) =>
+                        s.id !== session?.id &&
+                        s.stroke === session?.stroke &&
+                        s.event === session?.event,
+                    )
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} · {s.date ?? "Date unknown"} · {s.pool ?? "?"}{" "}
+                        m · {s.startType ?? "Start unknown"}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <p className="muted">
+                If no destination is available, cancel and create a session with
+                matching stroke and event first.
+              </p>
+              <div className="modal-actions">
+                <button
+                  className="button secondary"
+                  onClick={() => setModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button primary"
+                  disabled={!moveTarget}
+                  onClick={() => {
+                    const id = modal.test.id;
+                    setData((d) => ({
+                      ...d,
+                      tests: d.tests.map((t) =>
+                        t.id === id ? { ...t, sessionId: moveTarget } : t,
+                      ),
+                    }));
+                    setModal(null);
+                    setNotice(
+                      "Observation moved; original measurements and ID preserved.",
+                    );
+                  }}
+                >
+                  Move observation
+                </button>
+              </div>
+            </div>
+          </Dialog>
+        )}
+        {modal?.type === "help" && (
+          <Dialog
+            title="Your data. Clearer observations."
+            onClose={() => setModal(null)}
+          >
+            <div className="help-content">
+              <h3>What is compared?</h3>
+              <p>
+                Only observations in the selected session for one athlete. Each
+                session records date, stroke, event, pool and start type.
+                Timing, rest and effort should also be similar; record
+                differences in notes. Historical sessions are kept separate.
+              </p>
+              <h3>What do the results mean?</h3>
+              <p>
+                Best observed test means the lowest entered time. The lowest
+                mean is a separate descriptive summary by exact distance; it
+                does not establish a reliable strategy. Best–worst difference
+                describes the session spread, not training progress. All fastest
+                ties are retained.
+              </p>
+              <h3>Keep a copy</h3>
+              <p>
+                Data remains in this browser and origin. There is no cloud sync,
+                account or automatic backup. Use Backup JSON for a complete copy
+                and CSV for the selected session. Restore validates a file and
+                asks before replacing data. Use one tab for editing.
+              </p>
+              <h3>Limits</h3>
+              <p>
+                In freestyle, backstroke and butterfly, the head must break the
+                surface by 15 m after a start or turn. Breaststroke is excluded.
+                No medical advice, biomechanical validation, race prediction or
+                guaranteed performance is provided.
+              </p>
+            </div>
+          </Dialog>
+        )}
+        {confirmation && (
+          <Dialog
+            title={confirmation.title}
+            onClose={() => setConfirmation(null)}
+          >
+            <p className="modal-description">{confirmation.description}</p>
+            <div className="modal-actions">
+              <button
+                className="button secondary"
+                onClick={() => setConfirmation(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="button danger"
+                onClick={() => {
+                  confirmation.action();
+                  setConfirmation(null);
+                }}
+              >
+                Confirm removal
+              </button>
+            </div>
+          </Dialog>
+        )}
+        {pendingBackup && (
+          <Dialog
+            title="Review backup before restore"
+            onClose={() => setPendingBackup(null)}
+          >
+            <div className="help-content">
+              <p>
+                Incoming backup:{" "}
+                <strong>
+                  {pendingBackup.athletes.length} athletes,{" "}
+                  {pendingBackup.sessions.length} sessions,{" "}
+                  {pendingBackup.tests.length} observations.
+                </strong>
+              </p>
+              <ul>
+                {pendingBackup.athletes.map((a) => (
+                  <li key={a.id}>
+                    {a.name}
+                    {a.isDemo ? " (demo)" : ""} ·{" "}
+                    {
+                      pendingBackup.sessions.filter((s) => s.athleteId === a.id)
+                        .length
+                    }{" "}
+                    sessions
+                  </li>
+                ))}
+              </ul>
+              <details className="backup-session-list">
+                <summary>Review incoming sessions</summary>
+                <ul>
+                  {pendingBackup.sessions.map((s) => (
+                    <li key={s.id}>
+                      <strong>{s.name}</strong> ·{" "}
+                      {
+                        pendingBackup.athletes.find((a) => a.id === s.athleteId)
+                          ?.name
+                      }{" "}
+                      · {s.date ?? "Date unknown"} · {s.stroke} {s.event} m ·{" "}
+                      {s.pool ?? "?"} m pool · {s.startType ?? "Start unknown"}{" "}
+                      ·{" "}
+                      {
+                        pendingBackup.tests.filter((t) => t.sessionId === s.id)
+                          .length
+                      }{" "}
+                      tests
+                    </li>
+                  ))}
+                </ul>
+              </details>
+              <p>
+                {
+                  pendingBackup.sessions.filter((s) => !sessionComplete(s))
+                    .length
+                }{" "}
+                sessions have incomplete conditions; comparisons stay disabled
+                until reviewed.
+              </p>
+              <p>
+                <strong>This replaces all current data in this browser:</strong>{" "}
+                {data.athletes.length} athletes, {data.sessions.length} sessions
+                and {data.tests.length} observations. It is not a merge and
+                cannot be undone. Download your current backup first.
+              </p>
+              {importError && (
+                <p className="error" role="alert">
+                  {importError}
+                </p>
+              )}
+              <button
+                className="button secondary"
+                onClick={() =>
+                  download(
+                    JSON.stringify(data, null, 2),
+                    "underwater-before-restore.json",
+                    "application/json",
+                  )
+                }
+              >
+                Download current backup
+              </button>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="button secondary"
+                onClick={() => setPendingBackup(null)}
+              >
+                Cancel
+              </button>
+              <button className="button primary" onClick={restore}>
+                Replace all data and restore
+              </button>
+            </div>
+          </Dialog>
+        )}
+      </div>
+      <section className="print-summary">
+        <h1>Underwater Optimizer · Session summary</h1>
+        <h2>
+          {athlete?.name} · {session?.name}
+        </h2>
+        <p>
+          {session?.date ?? "Unknown date"} · {session?.stroke} {session?.event}{" "}
+          m · Pool: {session?.pool ?? "unknown"} m ·{" "}
+          {session?.startType ?? "Start unknown"}
+        </p>
+        {athlete?.isDemo && <p>DEMO DATA</p>}
+        {ready && best ? (
+          <>
+            <p>
+              Best observed test: {best.distance} m · {best.kicks} kicks ·{" "}
+              {best.time.toFixed(2)} s. {tied.length} fastest observation(s).
+            </p>
+            <p>
+              Best–worst difference:{" "}
+              {tests.length > 1
+                ? `${spread.toFixed(2)} s`
+                : "Not enough observations"}
+              .
+            </p>
+            <Statistics tests={tests} />
+          </>
+        ) : (
+          <p>
+            Conditions incomplete or no observations. No comparison is provided.
+          </p>
+        )}
+        <table>
+          <thead>
+            <tr>
+              <th>Test reference</th>
+              <th>Breakout</th>
+              <th>Kicks</th>
+              <th>15 m time</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((t, i) => (
+              <tr key={t.id}>
+                <td>
+                  {i + 1} · {t.id}
+                </td>
+                <td>{t.distance} m</td>
+                <td>{t.kicks}</td>
+                <td>{t.time.toFixed(2)} s</td>
+                <td>{t.notes}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p>
+          Based only on entered observations, not a validated biomechanical
+          model or a guarantee of race performance. Comparable timing, effort
+          and rest are not independently verified. Head must surface by 15 m for
+          freestyle, backstroke and butterfly.
+        </p>
+        <p>Local browser data · no automatic device sync.</p>
+      </section>
+    </>
+  );
+}
+function Stat({
+  title,
+  value,
+  unit,
+  note,
+}: {
+  title: string;
+  value: string;
+  unit: string;
+  note: string;
+}) {
+  return (
+    <div className="stat-card">
+      <div className="stat-caption">{title}</div>
+      <div className="stat-value">
+        {value}
+        <span>{unit}</span>
+      </div>
+      <p className="stat-sub">{note}</p>
     </div>
   );
 }
-export default App;
+function PersonalBest({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (v: string) => void;
+}) {
+  const [text, setText] = useState(value),
+    [error, setError] = useState("");
+  return (
+    <form
+      className="personal-best"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (
+          text.trim() !== "" &&
+          (!Number.isFinite(decimal(text)) ||
+            decimal(text) <= 0 ||
+            decimal(text) > 3600)
+        ) {
+          setError("Enter a positive time up to 3600 seconds.");
+          return;
+        }
+        onSave(text.trim() === "" ? "" : String(decimal(text)));
+        setError("Saved. Context only; not used in calculations.");
+      }}
+    >
+      <label>
+        Personal best for this stroke and event (optional, seconds)
+        <input
+          aria-label="Personal best"
+          inputMode="decimal"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="52.40"
+        />
+      </label>
+      <button className="button secondary">Save personal best</button>
+      <p role="status">{error}</p>
+    </form>
+  );
+}

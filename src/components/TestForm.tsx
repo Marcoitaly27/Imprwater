@@ -1,68 +1,70 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Plus, ArrowUpRight, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import type { Trial, TrialInput } from "../lib/model";
-import { validateTrial } from "../lib/model";
+import { decimal, validateTrial } from "../lib/model";
 export function TestForm({
   initial,
+  repeat,
   tests,
   onSave,
   onCancel,
 }: {
   initial?: Trial;
+  repeat?: Trial;
   tests: Trial[];
-  onSave: (input: TrialInput) => void;
-  onCancel?: () => void;
+  onSave: (t: TrialInput) => void;
+  onCancel: () => void;
 }) {
-  const [distance, setDistance] = useState(initial?.distance.toString() ?? "");
-  const [kicks, setKicks] = useState(initial?.kicks.toString() ?? "");
+  const [distance, setDistance] = useState(
+    (initial ?? repeat)?.distance.toString() ?? "",
+  );
+  const [kicks, setKicks] = useState(
+    (initial ?? repeat)?.kicks.toString() ?? "",
+  );
   const [time, setTime] = useState(initial?.time.toString() ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [error, setError] = useState("");
-  const similar =
-    distance !== "" &&
-    tests.some(
-      (t) =>
-        t.id !== initial?.id && Math.abs(t.distance - Number(distance)) < 0.25,
-    );
+  const similar = tests.some(
+    (t) =>
+      t.id !== initial?.id && Math.abs(t.distance - decimal(distance)) < 0.25,
+  );
   function submit(e: FormEvent) {
     e.preventDefault();
     const input = {
-      distance: distance === "" ? NaN : Number(distance),
-      kicks: kicks === "" ? NaN : Number(kicks),
-      time: time === "" ? NaN : Number(time),
+      distance: decimal(distance),
+      kicks: decimal(kicks),
+      time: decimal(time),
       notes: notes.trim(),
     };
-    const problem = validateTrial(input);
-    if (problem) {
-      setError(problem);
+    const err = validateTrial(input);
+    if (err) {
+      setError(err);
       return;
     }
     onSave(input);
-    if (!initial) {
-      setDistance("");
-      setKicks("");
-      setTime("");
-      setNotes("");
-      setError("");
-    }
   }
   return (
     <form onSubmit={submit} className="test-form">
+      {repeat && (
+        <p className="repeat-note">
+          Distance and kicks copied from the last observation. Enter a new time;
+          notes are not copied.
+        </p>
+      )}
       <div className="form-grid">
-        <label className="distance-field">
+        <label>
           Breakout distance
           <div className="input-unit">
             <input
               aria-label="Breakout distance"
-              type="number"
-              min="1"
-              max="15"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
+              autoFocus={!repeat && !initial}
               required
               value={distance}
               onChange={(e) => setDistance(e.target.value)}
-              placeholder="e.g. 12.0"
+              placeholder="12.0"
             />
             <span>m</span>
           </div>
@@ -72,14 +74,12 @@ export function TestForm({
           <div className="input-unit">
             <input
               aria-label="Dolphin kicks"
-              type="number"
-              min="0"
-              max="100"
-              step="1"
+              type="text"
+              inputMode="numeric"
               required
               value={kicks}
               onChange={(e) => setKicks(e.target.value)}
-              placeholder="e.g. 7"
+              placeholder="7"
             />
             <span>kicks</span>
           </div>
@@ -89,34 +89,38 @@ export function TestForm({
           <div className="input-unit">
             <input
               aria-label="15 m time"
-              type="number"
-              min="0.01"
-              max="300"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
+              autoFocus={!!repeat}
               required
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              placeholder="e.g. 6.31"
+              placeholder="6.31"
             />
             <span>s</span>
           </div>
         </label>
       </div>
+      <p className="input-hint">
+        Use a dot or comma for decimals. Breakout: 1–15 m. Time: 0–300 s,
+        excluding zero.
+      </p>
       <label className="notes-label">
-        Notes <span className="muted">Optional</span>
+        Notes (optional)
         <textarea
           aria-label="Notes"
           maxLength={500}
-          rows={2}
           value={notes}
+          rows={3}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="How did it feel? Start or turn, effort, conditions…"
+          placeholder="Effort, rest, timing method, conditions…"
         />
       </label>
       {similar && (
         <p className="inline-note">
-          <Info size={14} /> Similar distance recorded. Repeats are kept as
-          separate observations.
+          <Info size={16} />
+          Similar distance recorded. This remains a separate test; statistics
+          group only exactly equal distances.
         </p>
       )}
       {error && (
@@ -125,18 +129,11 @@ export function TestForm({
         </p>
       )}
       <div className="form-footer">
-        {onCancel ? (
-          <button className="button secondary" type="button" onClick={onCancel}>
-            Cancel
-          </button>
-        ) : (
-          <span className="muted form-tip">
-            Same conditions. Better comparisons.
-          </span>
-        )}
-        <button type="submit" className="button primary">
+        <button type="button" className="button secondary" onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="button primary">
           {initial ? "Save changes" : "Add test"}
-          {initial ? <ArrowUpRight size={16} /> : <Plus size={16} />}
         </button>
       </div>
     </form>

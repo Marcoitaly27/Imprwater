@@ -1,53 +1,85 @@
 import { describe, expect, it } from "vitest";
-import { analyze, emptyData, makeDemo, validateTrial } from "./model";
+import {
+  addDemo,
+  analyze,
+  decimal,
+  emptyData,
+  sessionTests,
+  sessionComplete,
+  validDate,
+  validateTrial,
+} from "./model";
 
-describe("observation analysis", () => {
-  const demo = makeDemo(emptyData().profile);
-  it("finds the actual fastest result and gain in the requested demo", () => {
-    const result = analyze(demo);
-    expect(result.best).toMatchObject({ distance: 12, kicks: 7, time: 6.31 });
-    expect(result.worst?.time).toBe(6.51);
-    expect(result.improvement).toBeCloseTo(0.2);
-    expect(result.longer?.time).toBe(6.43);
-    expect(result.longer!.time - result.best!.time).toBeCloseTo(0.12);
+describe("session and observed analysis", () => {
+  const demo = addDemo(emptyData());
+  it("keeps demo in a separate athlete/session without changing original data", () => {
+    const next = addDemo(demo);
+    expect(next.tests).toHaveLength(8);
+    expect(next.athletes).toHaveLength(2);
+    expect(demo.tests).toHaveLength(4);
+    const active = next.sessions.find((s) => s.id === next.selectedSessionId)!;
+    expect(sessionTests(next, active)).toHaveLength(4);
+    expect(sessionComplete(active)).toBe(true);
+    expect(sessionTests(next, undefined)).toEqual([]);
   });
-  it("handles empty and single observations without inventing a comparison", () => {
+  it("finds the lowest individual time, ties and best-worst spread", () => {
+    const a = analyze(demo.tests);
+    expect(a.best).toMatchObject({ distance: 12, kicks: 7, time: 6.31 });
+    expect(a.spread).toBeCloseTo(0.2);
+    expect(a.preliminary).toBe(true);
+    const b = analyze([
+      ...demo.tests,
+      { ...demo.tests[2], id: "tie", distance: 10 },
+    ]);
+    expect(b.tied).toHaveLength(2);
+    expect(b.best?.id).toBe("tie");
+  });
+  it("calculates mean, even/odd medians, sample SD and separates exact distances", () => {
+    const base = demo.tests[0];
+    const ts = [6, 7, 8, 6.2].map((time, i) => ({
+      ...base,
+      id: String(i),
+      time,
+      distance: i === 3 ? 8.01 : 8,
+    }));
+    const a = analyze(ts);
+    expect(a.groups).toHaveLength(2);
+    expect(a.groups[0]).toMatchObject({
+      count: 3,
+      mean: 7,
+      median: 7,
+      sd: 1,
+      min: 6,
+      max: 8,
+      best: 6,
+    });
+    expect(a.groups[1].sd).toBeNull();
+    expect(a.best?.distance).toBe(8);
+    expect(a.bestMean?.distance).toBe(8.01);
+    expect(analyze(ts.slice(0, 2)).groups[0].median).toBe(6.5);
+  });
+  it("does not invent variability or comparisons for missing observations", () => {
     expect(analyze([]).best).toBeUndefined();
-    expect(analyze([]).improvement).toBe(0);
-    expect(analyze([demo[0]]).improvement).toBe(0);
-    expect(analyze([demo[0]]).longer).toBeUndefined();
+    expect(analyze([]).bestMean).toBeUndefined();
+    expect(analyze([demo.tests[0]]).groups[0].sd).toBeNull();
+    expect(analyze([demo.tests[0]]).preliminary).toBe(true);
   });
-  it("keeps repeated observations and reports all fastest ties, shortest first", () => {
-    const repeat = { ...demo[2], id: "repeat", distance: 10 };
-    const result = analyze([...demo, repeat]);
-    expect(result.sorted).toHaveLength(5);
-    expect(result.best?.id).toBe("repeat");
-    expect(result.tied).toHaveLength(2);
-    expect(demo.map((t) => t.distance)).toEqual([8, 10, 12, 14]);
-  });
-  it("rejects out of range, nonfinite and fractional kick values", () => {
+  it("parses comma/dot decimals and rejects malformed, nonfinite and invalid input", () => {
+    expect(decimal(" 6,31 ")).toBe(6.31);
+    expect(decimal("12.01")).toBe(12.01);
+    for (const v of ["", "1,2,3", "6abc", "1e2", "Infinity", "-1"])
+      expect(decimal(v)).toBeNaN();
     for (const change of [
       { distance: 0 },
       { distance: 15.01 },
       { time: 0 },
       { time: NaN },
-      { kicks: -1 },
       { kicks: 1.5 },
-      { kicks: Infinity },
+      { kicks: -1 },
       { notes: "x".repeat(501) },
-    ]) {
-      expect(
-        validateTrial({
-          distance: 12,
-          kicks: 7,
-          time: 6.31,
-          notes: "",
-          ...change,
-        }),
-      ).not.toBeNull();
-    }
-    expect(
-      validateTrial({ distance: 15, kicks: 0, time: 6, notes: "" }),
-    ).toBeNull();
+    ])
+      expect(validateTrial({ ...demo.tests[0], ...change })).not.toBeNull();
+    expect(validDate("2026-02-30")).toBe(false);
+    expect(validDate("2024-02-29")).toBe(true);
   });
 });
