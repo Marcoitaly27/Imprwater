@@ -45,12 +45,12 @@ export function PoolLane({
           >
             <defs>
               <linearGradient id={`water-${id}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#0b5b87" stopOpacity=".38" />
-                <stop offset="100%" stopColor="#04101e" />
+                <stop offset="0%" stopColor="#e4f3fb" stopOpacity="1" />
+                <stop offset="100%" stopColor="#e4f3fb" />
               </linearGradient>
               <linearGradient id={`trail-${id}`}>
-                <stop offset="0%" stopColor="#0284c7" stopOpacity=".15" />
-                <stop offset="100%" stopColor="#00e5ff" />
+                <stop offset="0%" stopColor="#0284c7" stopOpacity="1" />
+                <stop offset="100%" stopColor="#0284c7" />
               </linearGradient>
               <pattern
                 id={`tile-${id}`}
@@ -61,8 +61,8 @@ export function PoolLane({
                 <path
                   d="M 50 0 L 0 0 0 30"
                   fill="none"
-                  stroke="#38bdf8"
-                  strokeOpacity=".06"
+                  stroke="#75a9c9"
+                  strokeOpacity=".15"
                   strokeWidth="1"
                 />
               </pattern>
@@ -74,7 +74,7 @@ export function PoolLane({
               y1="28"
               x2="1000"
               y2="28"
-              stroke="#38bdf8"
+              stroke="#75a9c9"
               strokeOpacity=".22"
             />
             {[5, 10].map((m) => (
@@ -84,8 +84,8 @@ export function PoolLane({
                 x2={(m / 15) * 1000}
                 y1="0"
                 y2="120"
-                stroke="#38bdf8"
-                strokeOpacity=".1"
+                stroke="#75a9c9"
+                strokeOpacity=".3"
                 strokeDasharray="3 5"
               />
             ))}
@@ -100,7 +100,7 @@ export function PoolLane({
                 />
                 <path
                   d={`M 0 96 C ${x * 0.35} 108, ${x * 0.72} 108, ${x} 28 L ${x} 120 L 0 120 Z`}
-                  fill="#00e5ff"
+                  fill="#0284c7"
                   fillOpacity=".035"
                 />
               </>

@@ -52,9 +52,9 @@ export function PerformanceChart({
             cx={cx}
             cy={cy}
             r={12}
-            fill="#00e5ff"
+            fill="#0284c7"
             fillOpacity={0.06}
-            stroke="#f5c56c"
+            stroke="#075985"
             strokeOpacity={0.8}
             strokeWidth={1.5}
           />
@@ -63,8 +63,8 @@ export function PerformanceChart({
           cx={cx}
           cy={cy}
           r={chosen ? 6.5 : 5}
-          fill={fastest ? "#f5c56c" : "#00e5ff"}
-          stroke={chosen ? "#fff" : "#0c1e38"}
+          fill={fastest ? "#075985" : "#0284c7"}
+          stroke={chosen ? "#0f172a" : "#ffffff"}
           strokeWidth={2}
           role="button"
           tabIndex={0}
@@ -111,20 +111,20 @@ export function PerformanceChart({
       <div className="chart-area" aria-label="Breakout performance chart">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <ScatterChart margin={{ top: 20, right: 22, bottom: 24, left: 16 }}>
-            <CartesianGrid stroke="#193452" strokeDasharray="3 5" />
+            <CartesianGrid stroke="#e0edf8" strokeDasharray="3 5" />
             <XAxis
               type="number"
               dataKey="distance"
               domain={[0, 15]}
               ticks={[0, 3, 6, 9, 12, 15]}
-              tick={{ fill: "#94a3b8", fontSize: 11 }}
+              tick={{ fill: "#596b80", fontSize: 11 }}
               tickLine={false}
               axisLine={false}
               label={{
                 value: "BREAKOUT DISTANCE (m)",
                 position: "bottom",
                 offset: 6,
-                fill: "#94a3b8",
+                fill: "#596b80",
                 fontSize: 10,
               }}
             />
@@ -133,7 +133,7 @@ export function PerformanceChart({
               dataKey="chartValue"
               domain={[low, detail ? high : "auto"]}
               allowDataOverflow={detail}
-              tick={{ fill: "#94a3b8", fontSize: 11 }}
+              tick={{ fill: "#596b80", fontSize: 11 }}
               tickLine={false}
               axisLine={false}
               width={48}
@@ -145,13 +145,13 @@ export function PerformanceChart({
                 angle: -90,
                 position: "insideLeft",
                 dx: -6,
-                fill: "#94a3b8",
+                fill: "#596b80",
                 fontSize: 10,
               }}
             />
             <Tooltip
               cursor={{
-                stroke: "#38bdf8",
+                stroke: "#0284c7",
                 strokeOpacity: 0.3,
                 strokeDasharray: "4 4",
               }}
@@ -174,14 +174,14 @@ export function PerformanceChart({
             {best && (
               <ReferenceLine
                 x={best.distance}
-                stroke="#00e5ff"
+                stroke="#0284c7"
                 strokeDasharray="4 5"
                 strokeOpacity={0.25}
               />
             )}
             <Scatter
               data={guide}
-              line={{ stroke: "#38bdf8", strokeWidth: 2, strokeOpacity: 0.6 }}
+              line={{ stroke: "#0284c7", strokeWidth: 2, strokeOpacity: 0.6 }}
               lineType="joint"
               shape={() => <g />}
               isAnimationActive={false}
